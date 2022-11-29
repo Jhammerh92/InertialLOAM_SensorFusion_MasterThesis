@@ -71,10 +71,11 @@ class Backend : public rclcpp::Node
         rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odometry_pub;
         rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub;
        
-        
+        pcl::VoxelGrid<PointType> global_map_ds_filter;
 
         vector<boost::shared_ptr<pcl::PointCloud<PointType>>> all_clouds;
         pcl::PointCloud<PointType>::Ptr global_cloud = boost::make_shared<pcl::PointCloud<PointType>>();
+        pcl::PointCloud<PointType>::Ptr global_cloud_ds = boost::make_shared<pcl::PointCloud<PointType>>();
         pcl::PointCloud<PointType>::Ptr new_pcl_cloud = boost::make_shared<pcl::PointCloud<PointType>>();
         pcl::PointCloud<PoseInfo>::Ptr odometry_pose_info = boost::make_shared<pcl::PointCloud<PoseInfo>>(); // add keyframe pose info?
 
@@ -91,7 +92,7 @@ class Backend : public rclcpp::Node
             allocateMemory();
 
             run_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-            map_processing_timer = this->create_wall_timer(10ms, std::bind(&Backend::run, this), run_cb_group_);
+            map_processing_timer = this->create_wall_timer(500ms, std::bind(&Backend::run, this), run_cb_group_);
 
             sub1_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
             rclcpp::SubscriptionOptions options1;
@@ -111,6 +112,9 @@ class Backend : public rclcpp::Node
             odometry_pub = this->create_publisher<nav_msgs::msg::Odometry>("/odom_backend", 100);
             path_pub = this->create_publisher<nav_msgs::msg::Path>("/path_backend", 100);
 
+            float global_map_ds_leafsize = 0.02;
+            global_map_ds_filter.setLeafSize(global_map_ds_leafsize, global_map_ds_leafsize, global_map_ds_leafsize);
+
             new_cloud_ready = false;
             new_pose_ready = false;
         }
@@ -123,6 +127,7 @@ class Backend : public rclcpp::Node
             // local_map_ds.reset(new pcl::PointCloud<PointType>());
             
             global_cloud.reset(new pcl::PointCloud<PointType>());
+            global_cloud_ds.reset(new pcl::PointCloud<PointType>());
             new_pcl_cloud.reset(new pcl::PointCloud<PointType>());
 
             odometry_pose_info.reset(new pcl::PointCloud<PoseInfo>());
@@ -225,9 +230,12 @@ class Backend : public rclcpp::Node
                 *global_cloud += transformed_cloud;
             }
 
+            global_map_ds_filter.setInputCloud(global_cloud);
+            global_map_ds_filter.filter(*global_cloud_ds);
+
             sensor_msgs::msg::PointCloud2 msgs;
             #ifndef __INTELLISENSE__ 
-            pcl::toROSMsg(*global_cloud, msgs);
+            pcl::toROSMsg(*global_cloud_ds, msgs);
             #endif
             // msgs.header.stamp = ros::Time().fromSec(time_new_cloud);
             msgs.header.stamp = time_latest_cloud; 
