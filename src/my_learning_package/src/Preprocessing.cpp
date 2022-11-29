@@ -174,6 +174,23 @@ public:
         return sqrt(pt.x*pt.x + pt.y*pt.y + pt.z*pt.z);
     }
 
+    template <typename PointT>
+    Eigen::Vector3d getNormalizedPositionVector(PointT pt) {
+        // double dist = getDepth(pt)
+        Eigen::Vector3d position_vector(pt.x, pt.y, pt.z);
+        position_vector.normalize();
+
+        return position_vector;
+    }
+
+    template <typename PointT>
+    Eigen::Vector3d getSurfaceNormal(PointT pt) {
+        Eigen::Vector3d normal_vector(pt.normal_x, pt.normal_y, pt.normal_z);
+        return normal_vector;
+    }
+
+
+
     // PointXYZINormal undistortion(PointXYZINormal pt, const Eigen::Quaterniond quat) {
     //     double dt = 0.1;
     //     int line = int(pt.intensity);
@@ -357,6 +374,7 @@ public:
     {
         // Create the normal estimation class, and pass the input dataset to it
         pcl::NormalEstimationOMP<PointType, PointType> normal_estimator;
+        normal_estimator.useSensorOriginAsViewPoint();
         normal_estimator.setInputCloud(cloud_in);
         
         // Create an empty kdtree representation, and pass it to the normal estimation object.
@@ -368,7 +386,8 @@ public:
         // pcl::PointCloud<pcl::Normal>::Ptr cloud_normals (new pcl::PointCloud<pcl::Normal>);
         
         // Use all neighbors in a sphere of radius 3cm
-        normal_estimator.setRadiusSearch(normal_search_radius);
+        // normal_estimator.setRadiusSearch(normal_search_radius);
+        normal_estimator.setKSearch(50); // use x nearest points
         
         // Compute the features
         normal_estimator.compute(cloud_out);
@@ -395,7 +414,7 @@ public:
 
         size_t cloud_size = lidar_cloud_in->points.size();
         //in meters when using plateau
-        double T_edge = 0.2; // edge treshold, in meters when using plateau
+        double T_edge = 0.5; // edge treshold, in meters when using plateau
         double T_surf = 0.01; // surfaces threshold
 
         PointType point;
@@ -425,6 +444,44 @@ public:
         }
     }
 
+    template <typename PointT>
+    void normalizeIntensities(const pcl::PointCloud<PointT> &cloud_in, pcl::PointCloud<PointType> &cloud_out)
+    {
+        double range_reference = 10.0; // could be actively determined from cloudscale..
+        double range = 0.0;
+        double intensity_normalized = 0.0;
+        Eigen::Vector3d range_vector(0.0, 0.0, 0.0);
+        Eigen::Vector3d normal_vector(0.0, 0.0, 0.0);
+        // double max_intesity = std::numeric_limits<double>::min ();
+        for (size_t i = 0; i < cloud_in.points.size(); ++i) {
+            range = getDepth(cloud_in.points[i]);
+            normal_vector = getSurfaceNormal(cloud_in.points[i]);
+            range_vector = - getNormalizedPositionVector(cloud_in.points[i]);
+            double cos_incidence_angle = abs(range_vector.transpose() * normal_vector);
+
+            double intensity = (double) cloud_in.points[i].intensity;
+            intensity_normalized = intensity * (range / range_reference) * (range / range_reference) * (1.0 / cos_incidence_angle);
+            // intensity_normalized = intensity * (range / range_reference) * (1.0 / cos_incidence_angle);
+            // intensity_normalized = intensity * (1.0 / cos_incidence_angle);
+
+            if (intensity_normalized > 255.0) {
+                intensity_normalized = 255.0;
+            }
+
+            // if (intensity_normalized > max_intesity) {
+            //     max_intesity = intensity_normalized;
+            // }
+
+            cloud_out.points[i].intensity = (int)round(intensity_normalized);
+
+        }
+
+        // for (size_t i = 0; i < cloud_in.points.size(); ++i) {
+        //     cloud_out.points[i].intensity = (int)round(cloud_out.points[i].intensity/ max_intesity * 255.0);
+        // }
+
+    }
+
 
 
     void cloudHandler(const sensor_msgs::msg::PointCloud2::SharedPtr lidar_cloud_msg) 
@@ -441,7 +498,6 @@ public:
         if (cloud_queue.size() <= 0) { 
             return; 
         } else {
-            RCLCPP_INFO(get_logger(), "Buffer size is: %i", cloud_queue.size());
             current_cloud_msg = cloud_queue.front(); // puts the next cloud to variable current
             cloud_queue.pop_front(); // removes element from the queue
 
@@ -451,6 +507,9 @@ public:
  
             time_scan_next = current_cloud_msg.header.stamp; // why take time from the next? and should it be double?
 
+            if (cloud_queue.size() > 2) {
+                RCLCPP_WARN(get_logger(), "Buffer size is: %i", cloud_queue.size());
+            }
         } 
 
         // imu_stuff..
@@ -482,12 +541,14 @@ public:
         calculatePointNormals(lidar_cloud_in, *lidar_cloud_in); // openMP multi-processing accelerated 
         // calculatePointCurvature(*lidar_cloud_in, *lidar_cloud_in); // this is done in normal calculation anyway, so never needed again
 
-        // calculatePointPlateau(*lidar_cloud_in, *lidar_cloud_in, 2); // disabled because i'm not yet using the edges
+        // normalizeIntensities(*lidar_cloud_in, *lidar_cloud_in);
+
+        calculatePointPlateau(*lidar_cloud_in, *lidar_cloud_in, 2); // disabled because i'm not yet using the edges
 
         pcl::PointCloud<PointType>::Ptr surf_features = boost::make_shared<pcl::PointCloud<PointType>>(); // (new pcl::PointCloud<PointType>()); // boost shared ptr??
         pcl::PointCloud<PointType>::Ptr edge_features = boost::make_shared<pcl::PointCloud<PointType>>(); // (new pcl::PointCloud<PointType>());
 
-        // assignEdgeAndSurface(edge_features, surf_features);
+        assignEdgeAndSurface(edge_features, surf_features);
 
 
         // publish clouds created by the preprocessor
