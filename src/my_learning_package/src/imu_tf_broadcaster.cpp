@@ -39,7 +39,7 @@ class ImuBroadcaster : public rclcpp::Node{
             // rclcpp::Time now = this->get_clock()->now();
             geometry_msgs::msg::TransformStamped t;
             t_.header.stamp = this->get_clock()->now();;
-            t_.header.frame_id = "world";
+            t_.header.frame_id = "odom";
             t_.child_frame_id = "imu_link";
 
             t_.transform.rotation.w = data->orientation.w;
@@ -63,7 +63,7 @@ class ImuBroadcaster : public rclcpp::Node{
             rclcpp::Time now = this->get_clock()->now();
             geometry_msgs::msg::TransformStamped t;
             t_.header.stamp = now;
-            t_.header.frame_id = "world";
+            t_.header.frame_id = "odom";
             t_.child_frame_id = "imu_link";
 
 
