@@ -29,7 +29,7 @@ def generate_launch_description():
 
 
 
-    transform_node_livox = Node(
+    transform_node_velodyne = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
         arguments = [ '0', '0', '0', '0', '0', '0' , 'odom', 'velodyne'] 
@@ -60,7 +60,7 @@ def generate_launch_description():
     ld.add_action(preprocessing_node)
     ld.add_action(backend_node)
     ld.add_action(lidar_odometry_node)
-    ld.add_action(transform_node_livox)
+    ld.add_action(transform_node_velodyne)
     ld.add_action(transform_node_preproc)
     ld.add_action(transform_node_odom)
     ld.add_action(transform_node_global_map)

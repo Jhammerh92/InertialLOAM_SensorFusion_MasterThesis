@@ -1,0 +1,12 @@
+lidar_odometry:
+  ros__parameters:
+    ds_voxel_size: 0.1
+    ds_voxel_size_lc: 0.05
+    keyframe_threshold_length: 0.3
+    keyframe_threshold_angle: 0.05
+    keyframe_treshold_fitness: 0.5
+    keyframe_threshold_index: 0
+    icp_max_iterations: 50
+    icp_max_correspondance_distance: 0.5
+    local_map_width: 20
+

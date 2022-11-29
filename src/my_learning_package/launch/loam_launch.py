@@ -8,10 +8,12 @@ import os.path
 def generate_launch_description():
     ld = LaunchDescription()
 
+    config_dir = os.path.join(get_package_share_directory('my_learning_package'), 'config')
 
     lidar_odometry_node = Node(
         package="my_learning_package",
         executable="lidar_odometry",
+        parameters=[os.path.join(config_dir, 'lidar_odometry.yaml')],
         # arguments=['-d', os.path.join(get_package_share_directory('my_learning_package'), 'rviz', 'LO.rviz')]
     )
     preprocessing_node = Node(
