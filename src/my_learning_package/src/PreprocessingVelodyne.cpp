@@ -14,9 +14,11 @@
 #include <pcl_conversions/pcl_conversions.h>
 // #include <pcl/registration/icp.h>
 #include <pcl/filters/filter.h>
+#include <pcl/filters/voxel_grid.h>
 #include <pcl/features/normal_3d.h>
 #include <pcl/features/normal_3d_omp.h>
 #include <pcl/filters/statistical_outlier_removal.h>
+
 
 // #include <cmath>
 // #include <ctime>
@@ -77,6 +79,8 @@ private:
     // Eigen::Quaterniond q_iMU = Eigen::Quaterniond::Identity();
     // bool first_imu = false;
 
+    pcl::VoxelGrid<PointType> down_size_filter;
+
     std::deque<sensor_msgs::msg::PointCloud2> cloud_queue;
     sensor_msgs::msg::PointCloud2 current_cloud_msg;
 
@@ -92,7 +96,8 @@ private:
     
 
     // double normal_search_radius = 0.2; // small scale / indoors
-    double normal_search_radius = 4.0; // large scale / outdoors
+    double normal_search_radius = 2.0; // large scale / outdoors
+    float ds_leafsize = 0.1;
 
 public:
     Preprocessing(): 
@@ -130,6 +135,8 @@ public:
         pub_surf = this->create_publisher<sensor_msgs::msg::PointCloud2>("/surf_features", 100);
         pub_edge = this->create_publisher<sensor_msgs::msg::PointCloud2>("/edge_features", 100);
         pub_cutted_cloud = this->create_publisher<sensor_msgs::msg::PointCloud2>("/preprocessed_point_cloud", 100);
+
+        down_size_filter.setLeafSize(ds_leafsize, ds_leafsize, ds_leafsize);
 
 
 
@@ -357,6 +364,7 @@ public:
     {
         // Create the normal estimation class, and pass the input dataset to it
         pcl::NormalEstimationOMP<PointType, PointType> normal_estimator;
+        normal_estimator.setViewPoint(0.0, 0.0, 1.0);
         normal_estimator.setInputCloud(cloud_in);
         
         // Create an empty kdtree representation, and pass it to the normal estimation object.
@@ -368,7 +376,8 @@ public:
         // pcl::PointCloud<pcl::Normal>::Ptr cloud_normals (new pcl::PointCloud<pcl::Normal>);
         
         // Use all neighbors in a sphere of radius 3cm
-        normal_estimator.setRadiusSearch(normal_search_radius);
+        // normal_estimator.setRadiusSearch(normal_search_radius);
+        normal_estimator.setKSearch(25);
         
         // Compute the features
         normal_estimator.compute(cloud_out);
@@ -425,6 +434,15 @@ public:
         }
     }
 
+    template <typename PointT>
+    void downSampleCloud(const boost::shared_ptr<pcl::PointCloud<PointT>> &cloud_in, pcl::PointCloud<PointType> &cloud_out)
+    {
+        
+        
+        down_size_filter.setInputCloud(cloud_in);
+        down_size_filter.filter(cloud_out);
+    }
+
 
 
     void cloudHandler(const sensor_msgs::msg::PointCloud2::SharedPtr lidar_cloud_msg) 
@@ -476,9 +494,10 @@ public:
         // std::vector<int> indices;
         // pcl::removeNaNFromPointCloud(*lidar_cloud_in, *lidar_cloud_in, indices);
 
-        removeClosedPointCloud(*lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals, 2.5); // removes invalid points within a distance of x m from the center of the lidar
-        removeStatisticalOutliers(lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals);
+        removeClosedPointCloud(*lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals, 2.0); // removes invalid points within a distance of x m from the center of the lidar
+        // removeStatisticalOutliers(lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals);
         pcl::copyPointCloud(*lidar_cloud_in_no_normals, *lidar_cloud_in);
+        downSampleCloud(lidar_cloud_in, *lidar_cloud_in);
         calculatePointNormals(lidar_cloud_in, *lidar_cloud_in); // openMP multi-processing accelerated 
         // calculatePointCurvature(*lidar_cloud_in, *lidar_cloud_in); // this is done in normal calculation anyway, so never needed again
 
