@@ -27,7 +27,7 @@
 #include <pcl/registration/transformation_estimation_point_to_plane.h>
 #include <pcl/registration/ndt.h>
 
-// #include <cmath>
+#include <cmath>
 // #include <ctime>
 // #include <array>
 // #include <string>
@@ -40,7 +40,7 @@
 #include <queue>
 // #include <assert.h>
 
-
+#define _USE_MATH_DEFINES
 
 struct PoseInfo
 {
@@ -93,12 +93,10 @@ class LidarOdometry : public rclcpp::Node
 
 
         // pose representation: [quaternion: w, x, y, z | transition: x, y, z]
-        double abs_pose[7];   //absolute pose from current frame to the first frame / odometry
-        double rel_pose[7];   //relative pose between two frames
+        // double abs_pose[7];   //absolute pose from current frame to the first frame / odometry
+        // double rel_pose[7];   //relative pose between two frames
 
-        double ds_voxel_size;
 
-        double icp_fitness = 0.0;
         
         bool system_initialized = false;
         bool new_cloud_ready = false;
@@ -106,8 +104,9 @@ class LidarOdometry : public rclcpp::Node
         size_t latest_frame_idx;
         size_t latest_keyframe_idx;
 
+        double icp_fitness = 0.0;
 
-
+        double cloud_scale;
 
         // transformation matrices
         Eigen::Matrix4d registration_transformation;
@@ -119,8 +118,6 @@ class LidarOdometry : public rclcpp::Node
         deque<size_t> keyframe_index; // keyframes class instead?
 
 
-        // strings
-        std::string frame_id;
 
         // headers and header information
         rclcpp::Time time_new_cloud;
@@ -168,12 +165,65 @@ class LidarOdometry : public rclcpp::Node
 
         rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odometry_pub;
         rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub;
+
+        // parameters
+        // ds_voxelsize
+        // ds_voxelsize_lc
+        float ds_voxel_size_;
+        float ds_voxel_size_lc_;
+        // strings
+        std::string frame_id;
+        // this->declare_parameter("my_parameter", "world");
+        double keyframe_threshold_angle_;
+        double keyframe_threshold_length_;
+        double keyframe_threshold_fitness_;
+        int keyframe_threshold_index_; // max frames between keyframes
+        int icp_max_iterations_;
+        double icp_max_correspondance_distance_;
+        int local_map_width_;
+
+        bool use_cloud_scale_for_ds_{};
+
+        // publish topics as parameters?
+
     
 
     public:
         LidarOdometry()
             : Node("lidar_odometry")
             {
+
+                declare_parameter("ds_voxel_size", 0.1f);
+                get_parameter("ds_voxel_size", ds_voxel_size_);
+
+                declare_parameter("ds_voxel_size_lc", 0.1f);
+                get_parameter("ds_voxel_size_lc", ds_voxel_size_lc_);
+
+                declare_parameter("keyframe_threshold_length", 0.3);
+                get_parameter("keyframe_threshold_length", keyframe_threshold_length_);
+
+                declare_parameter("keyframe_threshold_angle", 2.0);
+                get_parameter("keyframe_threshold_angle", keyframe_threshold_angle_);
+
+                declare_parameter("keyframe_treshold_fitness", 0.5); // 0.5 * icp_correspondance threshold
+                get_parameter("keyframe_treshold_fitness", keyframe_threshold_fitness_);
+
+                declare_parameter("keyframe_threshold_index", 0); 
+                get_parameter("keyframe_threshold_index", keyframe_threshold_index_);
+
+                declare_parameter("icp_max_iterations", 50); 
+                get_parameter("icp_max_iterations", icp_max_iterations_);
+
+                declare_parameter("icp_max_correspondance_distance", 0.5); 
+                get_parameter("icp_max_correspondance_distance", icp_max_correspondance_distance_);
+
+                declare_parameter("local_map_width", 20); 
+                get_parameter("local_map_width", local_map_width_);
+
+                declare_parameter("use_cloud_scale_for_ds", true); 
+                get_parameter("use_cloud_scale_for_ds", use_cloud_scale_for_ds_);
+
+                // RCLCPP_INFO(get_logger(), "ds_voxel_size in constructor is: %f", ds_voxel_size_);
 
                 initializeParameters();
                 allocateMemory();
@@ -271,15 +321,16 @@ class LidarOdometry : public rclcpp::Node
                 last_odometry_transformation = Eigen::Matrix4d::Identity();
                 odometry_transformation_guess = Eigen::Matrix4d::Identity();
 
+                // get_parameter("ds_voxel_size", ds_voxel_size_);
 
                 frame_id = "lidar_odom";
                 odom.header.frame_id = frame_id;
 
-                // ds_voxel_size = 0.1f;
-                ds_voxel_size = 1.0f;
-                down_size_filter.setLeafSize(ds_voxel_size, ds_voxel_size, ds_voxel_size);
-                
-                down_size_filter_local_map.setLeafSize(ds_voxel_size/3.0, ds_voxel_size/3.0, ds_voxel_size/3.0);
+                // // ds_voxel_size = 0.1f;
+                // ds_voxel_size = 0.2f;
+                // RCLCPP_INFO(get_logger(), "ds_voxel_size in function is: %f", ds_voxel_size_);
+                down_size_filter.setLeafSize(ds_voxel_size_, ds_voxel_size_, ds_voxel_size_);
+                down_size_filter_local_map.setLeafSize(ds_voxel_size_lc_, ds_voxel_size_lc_, ds_voxel_size_lc_);
 
                 latest_frame_idx = 0;
                 latest_keyframe_idx = 0;
@@ -330,6 +381,7 @@ class LidarOdometry : public rclcpp::Node
 
             void pushKeyframe()
             {
+                RCLCPP_INFO(get_logger(), "New keyframe added! index: %i", latest_keyframe_idx);
 
                 pcl::PointCloud<PointType>::Ptr full = boost::make_shared<pcl::PointCloud<PointType>>();
                 // full.reset(new pcl::PointCloud<PointType>());
@@ -340,10 +392,12 @@ class LidarOdometry : public rclcpp::Node
                 keyframe_index.push_back(latest_keyframe_idx); // the keyframe ordered index
                 publishKeyframeCloud();
 
-                latest_keyframe_idx++; // the count of keyframes
 
                 odometry_transformation_guess = last_odometry_transformation;
                 registration_transformation = Eigen::Matrix4d::Identity(); // this has to be "resest" as it it is used to determine the next guess
+
+
+                latest_keyframe_idx++; // the count of keyframes
             }   
 
            
@@ -367,6 +421,15 @@ class LidarOdometry : public rclcpp::Node
                 // down_size_filter_surf_map.setInputCloud(surf_from_map);
                 // down_size_filter_surf_map.filter(*surf_from_map_ds);
 
+                if (use_cloud_scale_for_ds_ == true) {
+                    calcCloudScale();
+                    RCLCPP_INFO(get_logger(), "cloud scale is: %f", cloud_scale);
+                    float temp_leafsize = cloud_scale / 25.0; // 20 points ish from side to side
+                    float temp_leafsize_lc = temp_leafsize / 4.0;
+                    down_size_filter.setLeafSize(temp_leafsize, temp_leafsize, temp_leafsize);
+                    down_size_filter_local_map.setLeafSize(temp_leafsize_lc, temp_leafsize_lc, temp_leafsize_lc);
+                }
+
                 cloud_in_ds->clear();
                 down_size_filter.setInputCloud(cloud_in);
                 down_size_filter.filter(*cloud_in_ds);
@@ -374,6 +437,82 @@ class LidarOdometry : public rclcpp::Node
                 cloud_keyframe_ds->clear();
                 down_size_filter.setInputCloud(cloud_keyframe);
                 down_size_filter.filter(*cloud_keyframe_ds);
+            }
+
+            template <typename PointT> double inline
+            getMaxSegment (const pcl::PointCloud<PointT> &cloud)
+            {
+                double max_dist = std::numeric_limits<double>::min ();
+                int i_min = -1, i_max = -1;
+
+                for (size_t i = 0; i < cloud.points.size (); ++i)
+                {
+                    for (size_t j = i; j < cloud.points.size (); ++j)
+                    {
+                        // Compute the distance 
+                        double dist = (cloud.points[i].getVector4fMap () - 
+                                    cloud.points[j].getVector4fMap ()).squaredNorm ();
+                        if (dist <= max_dist)
+                        continue;
+
+                        max_dist = dist;
+                        i_min = i;
+                        i_max = j;
+                    }
+                }
+
+                if (i_min == -1 || i_max == -1)
+                return (max_dist = std::numeric_limits<double>::min ());
+
+                // pmin = cloud.points[i_min];
+                // pmax = cloud.points[i_max];
+                return (std::sqrt (max_dist));
+            }
+
+
+            template <typename PointT> double inline
+            getMaxLeftRight(const pcl::PointCloud<PointT> &cloud)
+            {
+                double max_left = std::numeric_limits<double>::max ();
+                double max_right = std::numeric_limits<double>::min ();
+                int i_left = -1, i_right = -1;
+
+                for (size_t i = 0; i < cloud.points.size (); ++i)
+                {        
+                    double y_val = cloud.points[i].y;
+                    // Compute the distance 
+                    // double dist = (cloud.points[i].getVector4fMap () - 
+                    //             cloud.points[j].getVector4fMap ()).squaredNorm ();
+                    if (y_val <= max_left) {
+                        max_left = y_val;
+                        i_left = i;
+
+                    } else if (y_val >= max_right) {
+                        max_right = y_val;
+                        i_right = i;
+                    }
+                }
+
+                if (i_left == -1 || i_right == -1)
+                return (max_left = std::numeric_limits<double>::min ());
+
+                // double dist = (cloud.points[i_left].getVector4fMap () - 
+                //                 cloud.points[i_right].getVector4fMap ()).squaredNorm ();
+
+
+                // double dist = cloud.points[i_right].y - cloud.points[i_left].y;
+                double dist = max_right - max_left;
+                // RCLCPP_INFO(get_logger(), "max_left is: %f - max_right is: %f, difference is %f", max_left, max_right, dist);
+
+                // pmin = cloud.points[i_left];
+                // pmax = cloud.points[i_right];
+                return dist;
+            }
+
+            void calcCloudScale()
+            {
+                // cloud_scale = getMaxSegment(*cloud_in); // very slow! for a 10 000 point cloud it does 100 mil iterations ie. O(n²)
+                cloud_scale = getMaxLeftRight(*cloud_in); // this only uses O(n) but is not guaranteed to find the largest distance, only a usable distance
             }
 
         
@@ -392,7 +531,7 @@ class LidarOdometry : public rclcpp::Node
                 boost::shared_ptr<PointToPlane> p2p(new PointToPlane);
 
                 // double max_correspondance_distance = 0.05;
-                double max_correspondance_distance = (double)ds_voxel_size;
+                double max_correspondance_distance = icp_max_correspondance_distance_;
 
                 icp.setTransformationEstimation(p2p);
 
@@ -425,7 +564,7 @@ class LidarOdometry : public rclcpp::Node
                 // second iteration with finer correspondence limit
 
                 icp.setMaxCorrespondenceDistance(max_correspondance_distance);
-                icp.setMaximumIterations(100);
+                icp.setMaximumIterations(icp_max_iterations_);
                 icp.setTransformationEpsilon(1e-6);
                 icp.align(*aligned_cloud, registration_transform);
 
@@ -493,19 +632,20 @@ class LidarOdometry : public rclcpp::Node
                 double length = reg_translation.norm();
 
                 // angle of rotation
+                // 0.1 rad is approx 5.73 deg
                 Eigen::AngleAxisd angleAxis = Eigen::AngleAxisd(reg_quarternion);
-                double angle = angleAxis.angle();
+                double angle = angleAxis.angle()*180.0/M_PI;
+
+                RCLCPP_DEBUG(get_logger(), "found transform parameters: length: %f, angle: %f, fitness: %f", length, angle, icp_fitness);
+                RCLCPP_DEBUG(get_logger(), "threshold parameters: length: %f, angle: %f, fitness: %f", keyframe_threshold_length_, keyframe_threshold_angle_, keyframe_threshold_fitness_);
+                RCLCPP_DEBUG(get_logger(), "should this be true: %i", (length > keyframe_threshold_length_ || angle > keyframe_threshold_angle_ || icp_fitness > keyframe_threshold_fitness_ ));
+
 
                 // and get icp fitness
 
                 // assert if any is beyong thresholds
-                // if (length > 0.3 || angle > 0.2 || icp_fitness > 0.01 ) //|| latest_frame_idx - 10 >= keyframe_index.size() )
-                // {
-                //     return true;
-                // }
-                // return false;
-                // 0.1 rad is approx 5.73 deg
-                return (length > 0.3 || angle > 0.05 || icp_fitness > 0.5 * ds_voxel_size );
+  
+                return (length > keyframe_threshold_length_ || angle > keyframe_threshold_angle_ || icp_fitness > keyframe_threshold_fitness_ );
             }
 
 
@@ -609,7 +749,7 @@ class LidarOdometry : public rclcpp::Node
             {
                 
                 
-                size_t max_frames = 20;
+                size_t max_frames = local_map_width_;
                 // int latest_keyframe_idx = keyframe_index.back();
 
                 // Initialization
@@ -817,6 +957,7 @@ class LidarOdometry : public rclcpp::Node
                     return;
                 }
 
+
                 downSampleClouds();
 
                 RCLCPP_INFO(get_logger(), "This is from RUN: frame_id: %s,  time of PCL: %f, num points: %i", cloud_header.frame_id.c_str(), time_new_cloud.nanoseconds()/1e9, cloud_in_ds->points.size());
@@ -837,7 +978,7 @@ class LidarOdometry : public rclcpp::Node
 
                 if (newKeyframeRequired() == true) {
                     pushKeyframe();
-                    RCLCPP_INFO(get_logger(), "New keyframe added! index: %i", latest_keyframe_idx);
+                    
                     savePose();
                     savePointCloud();
                     publishOdometry(); 
