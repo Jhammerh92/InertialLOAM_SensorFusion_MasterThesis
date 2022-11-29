@@ -278,8 +278,8 @@ class LidarOdometry : public rclcpp::Node
                 // ds_voxel_size = 0.1f;
                 ds_voxel_size = 1.0f;
                 down_size_filter.setLeafSize(ds_voxel_size, ds_voxel_size, ds_voxel_size);
-                
-                down_size_filter_local_map.setLeafSize(ds_voxel_size/1.0, ds_voxel_size/1.0, ds_voxel_size/1.0);
+                float ds_voxel_size_lc = ds_voxel_size/2.0;
+                down_size_filter_local_map.setLeafSize(ds_voxel_size_lc, ds_voxel_size_lc, ds_voxel_size_lc);
 
                 latest_frame_idx = 0;
                 latest_keyframe_idx = 0;
@@ -391,8 +391,8 @@ class LidarOdometry : public rclcpp::Node
 
                 boost::shared_ptr<PointToPlane> p2p(new PointToPlane);
 
-                // double max_correspondance_distance = 0.05;
-                double max_correspondance_distance = (double)ds_voxel_size;
+                double max_correspondance_distance = 0.5;
+                // double max_correspondance_distance = (double)ds_voxel_size;
 
                 icp.setTransformationEstimation(p2p);
 
@@ -400,8 +400,8 @@ class LidarOdometry : public rclcpp::Node
                 icp.setInputTarget(target);
 
                 // course estimation first to get a better initial estimate of transformation
-                icp.setMaxCorrespondenceDistance(20*max_correspondance_distance);
-                icp.setMaximumIterations(10);
+                icp.setMaxCorrespondenceDistance(10*max_correspondance_distance);
+                icp.setMaximumIterations(15);
                 icp.setTransformationEpsilon(1e-2);
                 icp.setEuclideanFitnessEpsilon(1e-6);
                 // icp.setRANSACIterations(10);
@@ -505,7 +505,7 @@ class LidarOdometry : public rclcpp::Node
                 // }
                 // return false;
                 // 0.1 rad is approx 5.73 deg
-                return (length > 15.0 || angle > 0.3 || icp_fitness > 0.5 * ds_voxel_size );
+                return (length > 15.0 || angle > 0.3 || icp_fitness > 0.5 );
             }
 
 
@@ -609,7 +609,7 @@ class LidarOdometry : public rclcpp::Node
             {
                 
                 
-                size_t max_frames = 10;
+                size_t max_frames = 7;
                 // int latest_keyframe_idx = keyframe_index.back();
 
                 // Initialization
