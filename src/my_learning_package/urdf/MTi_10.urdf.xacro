@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<robot name="mti_10" xmlns:xacro="http://www.ros.org/wiki/xacro" >
+  <link name="imu_base_link">
+    <visual>
+      <origin rpy="0 0 1.57079632679" xyz="0.02799 -0.01745 0.0022"/>
+      <geometry>
+        <!-- <mesh filename="file:///home/slamnuc/ros2_learning_ws/src/my_learning_package/urdf/MTi_10.stl" scale="0.001 0.001 0.001"/> -->
+        <mesh filename="package://my_learning_package/urdf/MTi_10.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="xsens_orange">
+        <color rgba="0.92 0.45 0.02 1.0"/>
+      </material>
+    </visual>
+
+    <collision>
+      <origin rpy="0 0 1.57079632679" xyz="0.02799 -0.01745 0.0022"/>
+      <geometry>
+        <!-- <mesh filename="file:///home/slamnuc/ros2_learning_ws/src/my_learning_package/urdf/MTi_10.stl" scale="0.001 0.001 0.001"/> -->
+        <mesh filename="package://my_learning_package/urdf/MTi_10.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+
+    <!-- add inerital values as xacro:inertial_box -->
+
+
+  </link>
+
+
+  <link name="imu_link">
+
+  </link>
+
+  <!-- cocs is short for center of coordinate system -->
+  <joint name="base_to_cocs" type="fixed">
+    <parent link="imu_base_link"/>
+    <child link="imu_link"/>
+    <origin xyz="0.0375 -0.015 0.007" />
+  </joint>
+
+</robot>

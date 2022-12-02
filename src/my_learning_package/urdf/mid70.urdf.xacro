@@ -1,0 +1,36 @@
+<?xmm version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" >
+
+    <xacro:include filename="inertial_macros.xacro"/>
+
+    <!-- color of lidar, TODO: put colors into separate xacro file -->
+    <material name="light_gray" >
+        <color rgba="0.8 0.8 0.8 1" />
+    </material>
+
+
+    <link name="livox_frame" >
+        <visual>
+            <origin xyz="-0.0323 0 -0.00105"/> <!-- x = 0.097/2 - 0.0162  z = 0.0627/2 - 0.0324, from manual of mid70, see center point location page 15-->
+            <geometry>
+                <box size="0.097 0.064 0.0627" />
+            </geometry>
+            <material name="light_gray" />
+        </visual>
+
+        <collision>
+            <origin xyz="-0.0323 0 -0.00105"/> <!-- x = 0.097/2 - 0.0162  z = 0.0627/2 - 0.0324, from manual of mid70, see center point location page 15-->
+            <geometry>
+                <box size="0.097 0.064 0.0627" />
+            </geometry>
+        </collision>
+
+        <xacro:inertial_box mass="0.580" x="0.097" y="0.064" z="0.0627">
+            <origin xyz="-0.0323 0 -0.00105"/> <!-- use geometric center? instead -->
+        </xacro:inertial_box>
+
+    </link>
+
+
+
+</robot>
