@@ -10,4 +10,5 @@ lidar_odometry:
     icp_max_correspondance_distance: 0.1
     local_map_width: 20
     use_cloud_scale_for_ds: true
+    use_fusion_with_imu: false
 

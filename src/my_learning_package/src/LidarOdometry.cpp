@@ -12,6 +12,11 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <nav_msgs/msg/odometry.hpp>
 #include <nav_msgs/msg/path.hpp>
+#include "geometry_msgs/msg/transform_stamped.hpp"
+
+#include "tf2_geometry_msgs/tf2_geometry_msgs.h"
+#include "tf2_ros/transform_broadcaster.h"
+
 
 #include <pcl/common/common.h>
 #include <pcl/point_cloud.h>
@@ -166,6 +171,8 @@ class LidarOdometry : public rclcpp::Node
         rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odometry_pub;
         rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub;
 
+        std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+
         // parameters
         // ds_voxelsize
         // ds_voxelsize_lc
@@ -183,8 +190,9 @@ class LidarOdometry : public rclcpp::Node
         int local_map_width_;
 
         bool use_cloud_scale_for_ds_{};
+        bool use_fusion_with_imu_{};
 
-        // publish topics as parameters?
+        // publish topics as parameters so they can be changed?
 
     
 
@@ -223,6 +231,9 @@ class LidarOdometry : public rclcpp::Node
                 declare_parameter("use_cloud_scale_for_ds", true); 
                 get_parameter("use_cloud_scale_for_ds", use_cloud_scale_for_ds_);
 
+                declare_parameter("use_fusion_with_imu", false); 
+                get_parameter("use_fusion_with_imu", use_fusion_with_imu_);
+
                 // RCLCPP_INFO(get_logger(), "ds_voxel_size in constructor is: %f", ds_voxel_size_);
 
                 initializeParameters();
@@ -249,10 +260,13 @@ class LidarOdometry : public rclcpp::Node
                 globalcloud_pub = this->create_publisher<PC_msg>("/global_point_cloud", 100);
                 localcloud_pub = this->create_publisher<PC_msg>("/local_point_cloud", 100);
 
+                // current odometry publisher
                 odometry_pub = this->create_publisher<nav_msgs::msg::Odometry>("/odom", 100);
                 path_pub = this->create_publisher<nav_msgs::msg::Path>("/path", 100);
 
-                // current odometry publisher
+                tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+
+
 
                 
             }
@@ -883,6 +897,23 @@ class LidarOdometry : public rclcpp::Node
                 odom.pose.pose.position.y = latestPoseInfo.y;
                 odom.pose.pose.position.z = latestPoseInfo.z;
                 odometry_pub->publish(odom);
+
+                // odom -> base_link transform
+                geometry_msgs::msg::TransformStamped t_;
+                // t_.header.stamp = this->get_clock()->now();
+                t_.header.stamp = cloud_header.stamp;
+                t_.header.frame_id = "odom";
+                t_.child_frame_id = "base_link"; // should this be livox frame
+
+                t_.transform.rotation.w = odom.pose.pose.orientation.w;
+                t_.transform.rotation.x = odom.pose.pose.orientation.x;
+                t_.transform.rotation.y = odom.pose.pose.orientation.y;
+                t_.transform.rotation.z = odom.pose.pose.orientation.z;
+                t_.transform.translation.x = odom.pose.pose.position.x;            
+                t_.transform.translation.y = odom.pose.pose.position.y;  
+                t_.transform.translation.z = odom.pose.pose.position.z;
+
+                tf_broadcaster_->sendTransform(t_);
 
                 geometry_msgs::msg::PoseStamped poseStamped;
                 poseStamped.header = odom.header;
