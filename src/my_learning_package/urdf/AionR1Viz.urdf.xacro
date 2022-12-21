@@ -1,0 +1,693 @@
+<?xmm version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="aion_r1">
+
+   
+
+    <xacro:include filename="inertial_macros.xacro"/> 
+    <!-- <xacro:include filename="materials.urdf.xacro"/> -->
+<!-- <?xml version="1.0" ?>
+<sdf version="1.5"> -->
+  <!-- <model name="aion_robotics_r1_rover"> -->
+
+    <!-- MATERIALS / COLOURS -->
+    <!-- <material name="white">
+        <color rgba="1 1 1 1"/>
+    </material>
+    <material name="gray">
+        <color rgba="0.5 0.5 0.5 1"/>
+    </material>
+    <material name="black">
+        <color rgba="0 0 0 1"/>
+    </material> -->
+
+
+
+
+    <link name="aion_base_link">
+
+        <collision>
+            <origin xyz="0 0 0.0575"/> <!-- z:0.1195-->
+            <geometry>
+                <box size=".40 0.21 0.1"/>
+            </geometry>
+
+        </collision>
+
+        <xacro:inertial_box mass="3.0" x="0.40" y="0.21" z="0.115">
+            <origin xyz="0 0 0.03"/> <!-- 0 0 0 ?-->
+        </xacro:inertial_box>
+
+        <!-- <inertial> -->
+            <!-- <mass value="33.00"/> -->
+            <!-- <pose>-0.0856132 -0.000839955 0.238145 0 0 0</pose> -->
+            <!-- <inertia ixx="2.2343" ixy="-0.023642" ixz="0.275174" iyy="3.42518" iyz="0.00239624" izz="2.1241" /> -->
+            <!-- <ixx>2.2343</ixx>
+            <ixy>-0.023642</ixy>
+            <ixz>0.275174</ixz>
+            <iyy>3.42518</iyy>
+            <iyz>0.00239624</iyz>
+            <izz>2.1241</izz> -->
+        <!-- </inertial> -->
+
+      
+
+        <visual name="base">
+            <!-- <pose>0 0 0 0 0 0</pose> -->
+            <origin xyz="0 0 0.0575"/> <!-- z:0.1195-->
+            <geometry>
+                <box size="0.40 0.21 0.1"/>
+            </geometry>
+            <material name="gray"/>
+        </visual>
+    </link>
+
+
+
+      <!-- Top Plate -->
+    <link name="top_plate_link">
+        <visual name="top_plate">
+            <!-- <pose>0 0 0 0 0 0</pose> -->
+            <origin xyz="0 0 0.0001"/>
+            <geometry>
+                <box size="0.343 0.324 0.002"/>
+            </geometry>
+            <material name="white"/>
+        </visual>
+
+        <collision>
+            <origin xyz="0 0 0"/> <!-- z:0.1195-->
+            <geometry>
+                <box size="0.45 0.324 0.002"/>
+            </geometry>
+
+        </collision>
+      
+
+        <!-- Front Bumper -->
+        <visual name="front_bumper">
+            <origin xyz="0.19 0 -0.0048" rpy="0 0.25 0"/>
+            <geometry>
+                <box size="0.040 0.324 0.002"/>
+            </geometry>
+            <material name="white"/>
+        </visual>
+
+        <!-- Rear Bumper -->
+        <visual name="front_bumper">
+            <origin xyz="-0.19 0 -0.0048" rpy="0 -0.25 0"/>
+            <geometry>
+                <box size="0.040 0.324 0.002"/>
+            </geometry>
+            <material name="white"/>
+        </visual>
+
+        <xacro:inertial_box mass="0.100" x="0.40" y="0.324" z="0.0002">
+            <origin xyz="0 0 0"/>
+        </xacro:inertial_box>
+
+
+    </link>
+
+    
+    <joint name="top_plate_joint" type="fixed">
+        <parent link="aion_base_link"/>
+        <child link="top_plate_link"/>
+        <origin xyz="0 0 0.115"/>
+    </joint>
+
+
+      <!-- User Rail -->
+    <link name="user_rail_link">
+        <visual name="user_rail">  
+            <!-- <pose>0.272 0 0.245 0 0 0</pose> -->
+            <origin xyz="-0.027 0 0.015"/>
+            <geometry>
+                <box size="0.206 0.073 0.03"/>
+            </geometry>
+            <material name="black"/>
+        </visual>
+
+        <visual name="user_rail_cylinder">  
+            <!-- <pose>0.272 0 0.245 0 0 0</pose> -->
+            <origin xyz="0.076 0 0.015"/>
+            <geometry>
+                <cylinder radius="0.054" length="0.03"/>
+            </geometry>
+            <material name="black"/>
+        </visual>
+
+        <xacro:inertial_box mass="0.400" x="0.26" y="0.073" z="0.03">
+            <origin xyz="0 0 0"/>
+        </xacro:inertial_box>
+
+
+        <collision>
+            <origin xyz="-0.027 0 0.015"/>
+            <geometry>
+                <box size="0.206 0.073 0.03"/>
+            </geometry>
+        </collision>
+        <collision>
+            <origin xyz="0.076 0 0.015"/>
+            <geometry>
+                <cylinder radius="0.054" length="0.03"/>
+            </geometry>
+        </collision>
+
+    </link>
+
+
+    <joint name="user_rail_joint" type="fixed">
+        <parent link="top_plate_link"/>
+        <child link="user_rail_link"/>
+        <origin xyz="-0.0415 0 0"/>
+    </joint>
+
+
+
+
+    <!-- Back Left Wheel -->
+    <link name="back_left_wheel">
+        <origin xyz="0 0 -0.0501"/>
+
+        <xacro:inertial_cylinder mass="0.100" radius="0.078" length="0.102">
+            <origin xyz="0 0 0"/>
+        </xacro:inertial_cylinder>
+
+        <!-- <inertial> -->
+            <!-- <mass value="2.6357"/> -->
+            <!-- <pose>0 0 0 0 0 0</pose> -->
+            <!-- <origin xyz="0 0 0"/> -->
+            <!-- <inertia ixx="0.0246688" ixy="0" ixz="0" iyy="0.0246688" iyz="0.00239624" izz="0.0441058" /> -->
+            <!-- <ixx>0.0246688</ixx>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyy>0.0246688</iyy>
+            <iyz>0</iyz>
+            <izz>0.0441058</izz>
+            </inertia> -->
+        <!-- </inertial> -->
+
+      <!-- <collision name="back_left_wheel_collision">
+        <pose>0 0 0 -1.5707 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.17775</radius>
+            <length>0.1143</length>
+          </cylinder>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>100000.0</mu>
+              <mu2>100000.0</mu2>
+              <slip1>0.0</slip1>
+              <slip2>0.0</slip2>
+            </ode>
+          </friction>
+        </surface>
+      </collision> -->
+
+
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <cylinder radius="0.078" length="0.102"/>
+            </geometry>
+        </collision>
+
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <!-- <pose>0 0 0 -3.14159 0 0</pose> -->
+            <geometry>
+                <cylinder radius="0.078" length="0.102"/>
+            </geometry>
+            <material name="black"/>
+        </visual>
+    </link>
+
+    <joint name="back_left_joint" type="fixed">
+        <parent link="aion_base_link"/>
+        <child link="back_left_wheel"/>
+        <origin xyz="-0.15 0.160 0.016" rpy="-${pi/2} 0 0"/> 
+        <axis xyz="0 0 1"/>
+        <!-- <axis>
+            <xyz>0 1 0</xyz>
+            <use_parent_model_frame>true</use_parent_model_frame>
+        </axis>
+        <physics>
+            <ode>
+            <limit>
+                <cfm>0.000000</cfm>
+                <erp>0.900000</erp>
+            </limit>
+            </ode>
+        </physics> -->
+    </joint>
+
+
+
+
+
+    <!-- Back Right Wheel -->
+    <link name="back_right_wheel">
+        <!-- <pose>-0.256 -0.285475 0.035 0 0 0</pose> -->
+        <origin xyz="0 0 -0.0501"/>
+
+        <xacro:inertial_cylinder mass="0.100" radius="0.078" length="0.102">
+            <origin xyz="0 0 0"/>
+        </xacro:inertial_cylinder>
+
+
+        <!-- <inertial> -->
+            <!-- <mass value="2.6357"/> -->
+            <!-- <pose>0 0 0 0 0 0</pose> -->
+            <!-- <inertia ixx="0.0246688" ixy="0" ixz="0" iyy="0.0246688" iyz="0.00239624" izz="0.0441058" /> -->
+            <!-- <ixx>0.0246688</ixx>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyy>0.0246688</iyy>
+            <iyz>0</iyz>
+            <izz>0.0441058</izz>
+            </inertia> -->
+        <!-- </inertial> -->
+
+      <!-- <collision name="back_right_wheel_collision">
+        <pose>0 0 0 -1.5707 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.17775</radius>
+            <length>0.1143</length>
+          </cylinder>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>100000.0</mu>
+              <mu2>100000.0</mu2>
+              <slip1>0.0</slip1>
+              <slip2>0.0</slip2>
+            </ode>
+          </friction>
+        </surface>
+      </collision> -->
+
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <cylinder radius="0.078" length="0.102"/>
+            </geometry>
+        </collision>
+
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <!-- <pose>0 0 0 -3.14159 0 0</pose> -->
+            <geometry>
+                <cylinder radius="0.078" length="0.102"/>
+            </geometry>
+            <material name="black"/>
+        </visual>
+    </link>
+
+    <joint name="back_right_joint" type="fixed">
+        <parent link="aion_base_link"/>
+        <child link="back_right_wheel"/>
+        <origin xyz="-0.15 -0.160 0.016" rpy="${pi/2} 0 0"/> 
+        <axis xyz="0 0 -1"/>
+        <!-- <axis>
+            <xyz>0 1 0</xyz>
+            <use_parent_model_frame>true</use_parent_model_frame>
+        </axis>
+        <physics>
+            <ode>
+            <limit>
+                <cfm>0.000000</cfm>
+                <erp>0.900000</erp>
+            </limit>
+            </ode>
+        </physics> -->
+    </joint>
+
+
+
+
+
+
+
+    <!-- Front Left Wheel -->
+    <link name="front_left_wheel">
+        <origin xyz="0 0 -0.0501"/>
+
+        <xacro:inertial_cylinder mass="0.100" radius="0.078" length="0.102">
+            <origin xyz="0 0 0"/>
+        </xacro:inertial_cylinder>
+
+        <!-- <inertial> -->
+            <!-- <mass value="2.6357"/> -->
+            <!-- <origin xyz="0 0 0" rpy="0 0 0"/> -->
+            <!-- <pose>0 0 0 0 0 0</pose> -->
+            <!-- <inertia ixx="0.0246688" ixy="0" ixz="0" iyy="0.0246688" iyz="0.00239624" izz="0.0441058" /> -->
+        <!-- <ixx>0.0246688</ixx>
+        <ixy>0</ixy>
+        <ixz>0</ixz>
+        <iyy>0.0246688</iyy>
+        <iyz>0</iyz>
+        <izz>0.0441058</izz>
+        </inertia> -->
+        <!-- </inertial> -->
+
+      <!-- <collision name="front_left_wheel_collision">
+        <pose>0 0 0 -1.5707 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.17775</radius>
+            <length>0.1143</length>
+          </cylinder>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>100000.0</mu>
+              <mu2>100000.0</mu2>
+              <slip1>0.0</slip1>
+              <slip2>0.0</slip2>
+            </ode>
+          </friction>
+        </surface>
+      </collision> -->
+
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <cylinder radius="0.078" length="0.102"/>
+            </geometry>
+        </collision>
+
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <cylinder radius="0.078" length="0.102"/>
+            </geometry>
+            <material name="black"/>
+        </visual>
+    </link>
+
+    <joint name="front_left_joint" type="fixed">
+        <parent link="aion_base_link"/>
+        <child link="front_left_wheel"/>
+        <origin xyz="0.15 0.160 0.016" rpy="-${pi/2} 0 0"/> 
+        <axis xyz="0 0 1"/>
+        <!-- <axis>
+            <xyz>0 1 0</xyz>
+            <use_parent_model_frame>true</use_parent_model_frame>
+        </axis>
+        <physics>
+            <ode>
+            <limit>
+                <cfm>0.000000</cfm>
+                <erp>0.900000</erp>
+            </limit>
+            </ode>
+        </physics> -->
+    </joint>
+
+
+
+
+
+
+    <!-- Front Right Wheel -->
+    <link name="front_right_wheel">
+        <!-- <pose>0.256 -0.285475 0.035 0 0 0</pose> -->
+        <origin xyz="0.256 -0.285474 0.035" rpy="0 0 0"/>
+
+        <xacro:inertial_cylinder mass="0.100" radius="0.078" length="0.102">
+            <origin xyz="0 0 0"/>
+        </xacro:inertial_cylinder>
+
+        <!-- <inertial> -->
+            <!-- <mass value="2.6357"/> -->
+            <!-- <pose>0 0 0 0 0 0</pose> -->
+            <!-- <origin xyz="0 0 0" rpy="0 0 0"/> -->
+            <!-- <inertia ixx="0.0246688" ixy="0" ixz="0" iyy="0.0246688" iyz="0.00239624" izz="0.0441058" /> -->
+            <!-- <ixx>0.0246688</ixx>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyy>0.0246688</iyy>
+            <iyz>0</iyz>
+            <izz>0.0441058</izz>
+            </inertia> -->
+        <!-- </inertial> -->
+
+      <!-- <collision name="front_right_wheel_collision">
+        <pose>0 0 0 -1.5707 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.17775</radius>
+            <length>0.1143</length>
+          </cylinder>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>100000.0</mu>
+              <mu2>100000.0</mu2>
+              <slip1>0.0</slip1>
+              <slip2>0.0</slip2>
+            </ode>
+          </friction>
+        </surface>
+      </collision> -->
+
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <cylinder radius="0.078" length="0.102"/>
+            </geometry>
+        </collision>
+
+        <visual>
+            <!-- <pose>0 0 0 -3.14159 0 0</pose> -->
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <cylinder radius="0.078" length="0.102"/>
+            </geometry>
+            <material name="black"/>
+        </visual>
+    </link>
+
+
+    <joint name="front_right_joint" type="fixed">
+        <parent link="aion_base_link"/>
+        <child link="front_right_wheel"/>
+        <origin xyz="0.15 -0.160 0.016" rpy="${pi/2} 0 0"/> 
+        <axis xyz="0 0 -1"/>
+        <!-- <axis>
+          <xyz>0 1 0</xyz>
+          <use_parent_model_frame>true</use_parent_model_frame>
+        </axis>
+        <physics>
+          <ode>
+            <limit>
+              <cfm>0.000000</cfm>
+              <erp>0.900000</erp>
+            </limit>
+          </ode>
+        </physics> -->
+    </joint>
+
+
+
+
+
+
+
+
+
+
+
+    <!-- <link name='aion_robotics_r1_rover/imu_link'>
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <pose>0 0 0 0 0 0</pose>
+        <mass>0.015</mass>
+        <inertia>
+          <ixx>1e-05</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>1e-05</iyy>
+          <iyz>0</iyz>
+          <izz>1e-05</izz>
+        </inertia>
+      </inertial>
+    </link> -->
+    <!-- <joint name='aion_robotics_r1_rover/imu_joint' type='revolute'>
+      <child>aion_robotics_r1_rover/imu_link</child>
+      <parent>aion_base_link</parent>
+      <axis>
+        <xyz>1 0 0</xyz>
+        <limit>
+          <lower>0</lower>
+          <upper>0</upper>
+          <effort>0</effort>
+          <velocity>0</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+        <use_parent_model_frame>1</use_parent_model_frame>
+      </axis>
+    </joint> -->
+    <!-- <joint name="front_right_joint" type="revolute">
+      <parent>aion_base_link</parent>
+      <child>front_right_wheel</child>
+      <axis>
+        <xyz>0 1 0</xyz>
+        <use_parent_model_frame>true</use_parent_model_frame>
+      </axis>
+      <physics>
+        <ode>
+          <limit>
+            <cfm>0.000000</cfm>
+            <erp>0.900000</erp>
+          </limit>
+        </ode>
+      </physics>
+    </joint> -->
+
+    <!-- <plugin name='barometer_plugin' filename='libgazebo_barometer_plugin.so'>
+      <robotNamespace/>
+      <pubRate>10</pubRate>
+      <baroTopic>/baro</baroTopic>
+    </plugin> -->
+    <!-- <plugin name='gazebo_imu_plugin' filename='libgazebo_imu_plugin.so'>
+      <robotNamespace></robotNamespace>
+      <linkName>aion_robotics_r1_rover/imu_link</linkName>
+      <imuTopic>/imu</imuTopic>
+      <gyroscopeNoiseDensity>0.0003394</gyroscopeNoiseDensity>
+      <gyroscopeRandomWalk>3.8785e-05</gyroscopeRandomWalk>
+      <gyroscopeBiasCorrelationTime>1000.0</gyroscopeBiasCorrelationTime>
+      <gyroscopeTurnOnBiasSigma>0.0087</gyroscopeTurnOnBiasSigma>
+      <accelerometerNoiseDensity>0.004</accelerometerNoiseDensity>
+      <accelerometerRandomWalk>0.006</accelerometerRandomWalk>
+      <accelerometerBiasCorrelationTime>300.0</accelerometerBiasCorrelationTime>
+      <accelerometerTurnOnBiasSigma>0.196</accelerometerTurnOnBiasSigma>
+    </plugin> -->
+    <!-- <plugin name="gps_plugin" filename="libgazebo_gps_plugin.so">
+	<robotNamespace></robotNamespace>
+	<gpsNoise>true</gpsNoise>
+    </plugin> -->
+    <!-- <plugin name='magnetometer_plugin' filename='libgazebo_magnetometer_plugin.so'>
+      <robotNamespace/>
+      <pubRate>20</pubRate>
+      <noiseDensity>0.0004</noiseDensity>
+      <randomWalk>6.4e-06</randomWalk>
+      <biasCorrelationTime>600</biasCorrelationTime>
+      <magTopic>/mag</magTopic>
+    </plugin> -->
+    <!-- <plugin name='mavlink_interface' filename='libgazebo_mavlink_interface.so'>
+      <robotNamespace></robotNamespace>
+      <imuSubTopic>/imu</imuSubTopic>
+      <gpsSubTopic>/gps</gpsSubTopic>
+      <magSubTopic>/mag</magSubTopic>
+      <baroSubTopic>/baro</baroSubTopic>
+      <mavlink_addr>INADDR_ANY</mavlink_addr>
+      <mavlink_udp_port>14560</mavlink_udp_port>
+      <serialEnabled>false</serialEnabled>
+      <serialDevice>/dev/ttyACM0</serialDevice>
+      <baudRate>921600</baudRate>
+      <qgc_addr>INADDR_ANY</qgc_addr>
+      <qgc_udp_port>14550</qgc_udp_port>
+      <hil_mode>false</hil_mode>
+      <hil_state_level>false</hil_state_level>
+      <enable_lockstep>true</enable_lockstep>
+      <use_tcp>true</use_tcp>
+      <motorSpeedCommandPubTopic>/gazebo/command/motor_speed</motorSpeedCommandPubTopic>
+      <control_channels>
+
+        <channel name="front_left_wheel_drive">
+          <input_index>0</input_index>
+          <input_offset>0</input_offset>
+          <input_scaling>20</input_scaling>
+          <zero_position_disarmed>0</zero_position_disarmed>
+          <zero_position_armed>0</zero_position_armed>
+          <joint_control_type>velocity</joint_control_type>
+          <joint_name>front_left_joint</joint_name>
+          <joint_control_pid>
+            <p>10</p>
+            <i>1</i>
+            <d>0</d>
+            <iMax>800</iMax>
+            <iMin>-800</iMin>
+            <cmdMax>1200</cmdMax>
+            <cmdMin>-1200</cmdMin>
+          </joint_control_pid>
+        </channel>
+
+       <channel name="back_left_wheel_drive">
+          <input_index>0</input_index>
+          <input_offset>0</input_offset>
+          <input_scaling>20</input_scaling>
+          <zero_position_disarmed>0</zero_position_disarmed>
+          <zero_position_armed>0</zero_position_armed>
+          <joint_control_type>velocity</joint_control_type>
+          <joint_name>back_left_joint</joint_name>
+          <joint_control_pid>
+            <p>10</p>
+            <i>1</i>
+            <d>0</d>
+            <iMax>800</iMax>
+            <iMin>-800</iMin>
+            <cmdMax>1200</cmdMax>
+            <cmdMin>-1200</cmdMin>
+          </joint_control_pid>
+        </channel>
+
+       <channel name="front_right_wheel_drive">
+          <input_index>1</input_index>
+          <input_offset>0</input_offset>
+          <input_scaling>20</input_scaling>
+          <zero_position_disarmed>0</zero_position_disarmed>
+          <zero_position_armed>0</zero_position_armed>
+          <joint_control_type>velocity</joint_control_type>
+          <joint_name>front_right_joint</joint_name>
+          <joint_control_pid>
+            <p>10</p>
+            <i>1</i>
+            <d>0</d>
+            <iMax>800</iMax>
+            <iMin>-800</iMin>
+            <cmdMax>1200</cmdMax>
+            <cmdMin>-1200</cmdMin>
+          </joint_control_pid>
+        </channel>
+       <channel name="back_right_wheel_drive">
+          <input_index>1</input_index>
+          <input_offset>0</input_offset>
+          <input_scaling>20</input_scaling>
+          <zero_position_disarmed>0</zero_position_disarmed>
+          <zero_position_armed>0</zero_position_armed>
+          <joint_control_type>velocity</joint_control_type>
+          <joint_name>back_right_joint</joint_name>
+          <joint_control_pid>
+            <p>10</p>
+            <i>1</i>
+            <d>0</d>
+            <iMax>800</iMax>
+            <iMin>-800</iMin>
+            <cmdMax>1200</cmdMax>
+            <cmdMin>-1200</cmdMin>
+          </joint_control_pid>
+        </channel>
+
+     </control_channels>
+    </plugin> -->
+  <!-- </model> -->
+<!-- </sdf>  -->
+
+
+
+
+
+</robot>

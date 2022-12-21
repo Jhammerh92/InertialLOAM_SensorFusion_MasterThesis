@@ -118,10 +118,11 @@ class Backend : public rclcpp::Node
             new_cloud_ready = false;
             new_pose_ready = false;
         }
+        ~Backend(){}
 
         void allocateMemory()
         {
-            RCLCPP_INFO(get_logger(), "Allocating Point Cloud Memory..");
+            // RCLCPP_INFO(get_logger(), "Allocating Point Cloud Memory..");
     
             // local_map.reset(new pcl::PointCloud<PointType>());
             // local_map_ds.reset(new pcl::PointCloud<PointType>());
@@ -151,7 +152,7 @@ class Backend : public rclcpp::Node
         {
             time_latest_cloud = pc_message->header.stamp;
 
-            RCLCPP_INFO(this->get_logger(),"cloud msg recieved");    
+            // RCLCPP_INFO(this->get_logger(),"cloud msg recieved");    
 
             pcl::PointCloud<PointType>::Ptr new_pcl_cloud_copy = boost::make_shared<pcl::PointCloud<PointType>>();
 
@@ -171,7 +172,7 @@ class Backend : public rclcpp::Node
         void odometryHandler(const nav_msgs::msg::Odometry::SharedPtr odom_message)
         {
             // match timestamp with cloud coming in
-            RCLCPP_INFO(this->get_logger(),"odom msg recieved");          
+            // RCLCPP_INFO(this->get_logger(),"odom msg recieved");          
 
             // save pose to all poses      
 
@@ -198,7 +199,7 @@ class Backend : public rclcpp::Node
         void pathHandler(const nav_msgs::msg::Path::SharedPtr message)
         {
             
-            RCLCPP_INFO(this->get_logger(),"path msg recieved %s", message->header.frame_id.c_str());   
+            RCLCPP_DEBUG(this->get_logger(),"path msg recieved %s", message->header.frame_id.c_str());   
             // save path             
         }
 
@@ -210,8 +211,8 @@ class Backend : public rclcpp::Node
             // publish the cloud, maybe with a gate-timer to not hog bandwidth and memory
   
             RCLCPP_INFO(get_logger(),"Publishing global map!");
-            RCLCPP_INFO(get_logger(),"number of clouds: %i", all_clouds.size());
-            RCLCPP_INFO(get_logger(),"number of poses: %i", odometry_pose_info->points.size());
+            // RCLCPP_INFO(get_logger(),"number of clouds: %i", all_clouds.size());
+            // RCLCPP_INFO(get_logger(),"number of poses: %i", odometry_pose_info->points.size());
             
             for (unsigned i = 0; i < odometry_pose_info->points.size(); i++)
             {

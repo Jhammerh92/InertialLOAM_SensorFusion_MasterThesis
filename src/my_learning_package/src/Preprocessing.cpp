@@ -6,6 +6,8 @@
 
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/PointCloud2.h>
+#include "sensor_msgs/msg/imu.hpp"
+#include "builtin_interfaces/msg/time.hpp"
 
 #include <pcl/common/common.h>
 #include <pcl/point_cloud.h>
@@ -34,7 +36,7 @@
 
 
 typedef pcl::PointXYZI PointTypeNoNormals; // need to calculate and assign normals and the change to PointXYZINormals
-typedef pcl::PointXYZINormal PointType; // need to calculate and assign normals and the change to PointXYZINormals
+typedef pcl::PointXYZINormal PointType; 
 
 using namespace std;
 using std::placeholders::_1;
@@ -50,6 +52,8 @@ private:
 
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_Lidar_cloud;
     rclcpp::TimerBase::SharedPtr process_timer;
+
+    rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu;
     // ros::Subscriber sub_imu;
 
     // ros::Publisher pub_surf;
@@ -69,13 +73,17 @@ private:
     pcl::PointCloud<PointType>::Ptr lidar_cloud_cutted = boost::make_shared<pcl::PointCloud<PointType>>();
     std_msgs::msg::Header cloud_header;
 
-    // vector<sensor_msgs::ImuConstPtr> imu_buf;
-    // int idx_imu = 0;
-    // double current_time_imu = -1;
+    vector<sensor_msgs::msg::Imu::SharedPtr> imu_buffer;
+    size_t imu_buffer_max_size = 600;
+    int idx_imu = 0;
+    double current_time_imu = -1;
+    double lidar_zero_time = -1;
 
-    // Eigen::Vector3d gyr_0;
-    // Eigen::Quaterniond q_iMU = Eigen::Quaterniond::Identity();
-    // bool first_imu = false;
+    Eigen::Vector3d gyr_0;
+    Eigen::Quaterniond q_iMU = Eigen::Quaterniond::Identity();
+    bool first_imu = true;
+    bool first_lidar = true;
+
 
     std::deque<sensor_msgs::msg::PointCloud2> cloud_queue;
     sensor_msgs::msg::PointCloud2 current_cloud_msg;
@@ -86,7 +94,7 @@ private:
     // int N_SCANS = 6;
     // int H_SCANS = 4000;
 
-    string frame_id = "lidar_preproc";
+    string frame_id = "lidar_odom";
     double edge_thres, surf_thres;
     double runtime = 0;
     
@@ -96,7 +104,8 @@ private:
 
 public:
     Preprocessing(): 
-        rclcpp::Node("preprocessing") {
+    rclcpp::Node("preprocessing")
+    {
         RCLCPP_INFO(get_logger(), "\033[1;32m---->\033[0m Preprocessing Started.");
         // if (!getParameter("/preprocessing/surf_thres", surf_thres))
         // {
@@ -120,6 +129,8 @@ public:
         rclcpp::SubscriptionOptions options; // create subscriver options
         options.callback_group = subscriber_cb_group_; // add callbackgroup to subscriber options
         sub_Lidar_cloud = this->create_subscription<sensor_msgs::msg::PointCloud2>("/livox/lidar", 100, std::bind(&Preprocessing::cloudHandler, this, _1), options); // add subscriber options to the subsriber constructor call..
+        sub_imu = this->create_subscription<sensor_msgs::msg::Imu>("/imu/data", 100, std::bind(&Preprocessing::imuHandler, this, _1), options); // make separate subscribe callback group?
+
 
         timer_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
         process_timer = this->create_wall_timer(5ms, std::bind(&Preprocessing::processNext, this), timer_cb_group_);  
@@ -136,6 +147,51 @@ public:
     }
 
     ~Preprocessing(){}
+
+    void cloudHandler(const sensor_msgs::msg::PointCloud2::SharedPtr lidar_cloud_msg) 
+    {
+        // cache point cloud in buffer
+        if (first_lidar)
+        {
+            first_lidar = false; // used by imu_handler to see when the first lidar msg has arrived
+        }
+
+        cloud_queue.push_back(*lidar_cloud_msg);
+    }
+
+    void imuHandler(const sensor_msgs::msg::Imu::SharedPtr imu_in) 
+    {
+        imu_buffer.push_back(imu_in);
+        if (first_lidar) // when the first lidar msg has arrived this whill no longer be updated and therefore is the time of the first lidar msg in imu time reference
+        {
+            lidar_zero_time = toSec(imu_in->header.stamp);
+        } else {
+            RCLCPP_INFO_ONCE(get_logger(), "First Lidar msg recieved at IMU time: %d", lidar_zero_time);
+        }
+
+        if(imu_buffer.size() > imu_buffer_max_size) // if buffer is "filled" / above max size, clear the entries at the front
+            imu_buffer[imu_buffer.size() - imu_buffer_max_size + 1] = nullptr; // why not pop the first element in buffer, if this is to clear old buffer?
+
+        if (current_time_imu < 0) // initialized as -1.0. why not do this in the next if statement??
+            // current_time_imu = imu_in->header.stamp.toSec();
+            // time_in = imu_in->header.stamp;
+            // current_time_imu = time_in.nanoseconds();
+            current_time_imu = toSec(imu_in->header.stamp);
+
+        if (first_imu) // this is only done on the first msg
+        {
+            first_imu = false;
+            double rx = 0, ry = 0, rz = 0;
+            rx = imu_in->angular_velocity.x;
+            ry = imu_in->angular_velocity.y;
+            rz = imu_in->angular_velocity.z;
+            Eigen::Vector3d angular_velocity(rx, ry, rz);
+            gyr_0 = angular_velocity;
+        }
+    }
+
+
+
 
     // function that can remove points that are too close to the scanner i.e. auto-scans, weird function name will have to change it when I now how far i goes
     template <typename PointT>
@@ -216,70 +272,74 @@ public:
     //     return p_out;
     // }
 
-    // void solveRotation(double dt, Eigen::Vector3d angular_velocity) {
-    //     Eigen::Vector3d un_gyr = 0.5 * (gyr_0 + angular_velocity);
-    //     q_iMU *= deltaQ(un_gyr * dt);
-    //     gyr_0 = angular_velocity;
-    // }
+    double toSec(builtin_interfaces::msg::Time header_stamp)
+    {
+        rclcpp::Time time = header_stamp;
+        double nanoseconds = time.nanoseconds();
+        return nanoseconds/1e-9;
+    }
 
-    // void processIMU(double t_cur) {
-    //     double rx = 0, ry = 0, rz = 0;
-    //     int i = idx_imu;
-    //     if(i >= imu_buf.size())
-    //         i--;
-    //     while(imu_buf[i]->header.stamp.toSec() < t_cur) {
+    //get quaternion from rotation vector
+    template <typename Derived>
+    Eigen::Quaternion<typename Derived::Scalar> deltaQ(const Eigen::MatrixBase<Derived> &theta)
+    {
+        typedef typename Derived::Scalar Scalar_t;
 
-    //         double t = imu_buf[i]->header.stamp.toSec();
-    //         if (current_time_imu < 0)
-    //             current_time_imu = t;
-    //         double dt = t - current_time_imu;
-    //         current_time_imu = imu_buf[i]->header.stamp.toSec();
+        Eigen::Quaternion<Scalar_t> dq;
+        Eigen::Matrix<Scalar_t, 3, 1> half_theta = theta;
+        half_theta /= static_cast<Scalar_t>(2.0);
+        dq.w() = static_cast<Scalar_t>(1.0);
+        dq.x() = half_theta.x();
+        dq.y() = half_theta.y();
+        dq.z() = half_theta.z();
+        return dq;
+    }
 
-    //         rx = imu_buf[i]->angular_velocity.x;
-    //         ry = imu_buf[i]->angular_velocity.y;
-    //         rz = imu_buf[i]->angular_velocity.z;
-    //         solveRotation(dt, Eigen::Vector3d(rx, ry, rz));
-    //         i++;
-    //         if(i >= imu_buf.size())
-    //             break;
-    //     }
+    void solveRotation(double dt, Eigen::Vector3d angular_velocity) {
+        Eigen::Vector3d un_gyr = 0.5 * (gyr_0 + angular_velocity);
+        q_iMU *= deltaQ(un_gyr * dt);
+        gyr_0 = angular_velocity;
+    }
 
-    //     if(i < imu_buf.size()) {
-    //         double dt1 = t_cur - current_time_imu;
-    //         double dt2 = imu_buf[i]->header.stamp.toSec() - t_cur;
+    void processIMU(double t_cur) {
+        double rx = 0, ry = 0, rz = 0;
+        size_t i = idx_imu;
+        if(i >= imu_buffer.size())
+            i--;
+        while(toSec(imu_buffer[i]->header.stamp) < t_cur) {
 
-    //         double w1 = dt2 / (dt1 + dt2);
-    //         double w2 = dt1 / (dt1 + dt2);
+            double t = toSec(imu_buffer[i]->header.stamp);
+            if (current_time_imu < 0)
+                current_time_imu = t;
+            double dt = t - current_time_imu;
+            current_time_imu = toSec(imu_buffer[i]->header.stamp);
 
-    //         rx = w1 * rx + w2 * imu_buf[i]->angular_velocity.x;
-    //         ry = w1 * ry + w2 * imu_buf[i]->angular_velocity.y;
-    //         rz = w1 * rz + w2 * imu_buf[i]->angular_velocity.z;
-    //         solveRotation(dt1, Eigen::Vector3d(rx, ry, rz));
-    //     }
-    //     current_time_imu = t_cur;
-    //     idx_imu = i;
-    // }
+            rx = imu_buffer[i]->angular_velocity.x;
+            ry = imu_buffer[i]->angular_velocity.y;
+            rz = imu_buffer[i]->angular_velocity.z;
+            solveRotation(dt, Eigen::Vector3d(rx, ry, rz));
+            i++;
+            if(i >= imu_buffer.size())
+                break;
+        }
 
-    // void imuHandler(const sensor_msgs::ImuConstPtr& imu_in) {
-    //     imu_buf.push_back(imu_in);
+        if(i < imu_buffer.size()) {
+            double dt1 = t_cur - current_time_imu;
+            double dt2 = toSec(imu_buffer[i]->header.stamp) - t_cur;
 
-    //     if(imu_buf.size() > 600)
-    //         imu_buf[imu_buf.size() - 601] = nullptr;
+            double w1 = dt2 / (dt1 + dt2);
+            double w2 = dt1 / (dt1 + dt2);
 
-    //     if (current_time_imu < 0)
-    //         current_time_imu = imu_in->header.stamp.toSec();
+            rx = w1 * rx + w2 * imu_buffer[i]->angular_velocity.x;
+            ry = w1 * ry + w2 * imu_buffer[i]->angular_velocity.y;
+            rz = w1 * rz + w2 * imu_buffer[i]->angular_velocity.z;
+            solveRotation(dt1, Eigen::Vector3d(rx, ry, rz));
+        }
+        current_time_imu = t_cur;
+        idx_imu = i;
+    }
 
-    //     if (!first_imu)
-    //     {
-    //         first_imu = true;
-    //         double rx = 0, ry = 0, rz = 0;
-    //         rx = imu_in->angular_velocity.x;
-    //         ry = imu_in->angular_velocity.y;
-    //         rz = imu_in->angular_velocity.z;
-    //         Eigen::Vector3d angular_velocity(rx, ry, rz);
-    //         gyr_0 = angular_velocity;
-    //     }
-    // }
+
 
 
     template <typename PointT>
@@ -484,11 +544,7 @@ public:
 
 
 
-    void cloudHandler(const sensor_msgs::msg::PointCloud2::SharedPtr lidar_cloud_msg) 
-    {
-        // cache point cloud
-        cloud_queue.push_back(*lidar_cloud_msg);
-    }
+
 
 
     void processNext()

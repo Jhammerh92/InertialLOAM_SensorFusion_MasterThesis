@@ -1,6 +1,8 @@
 from launch import LaunchDescription
 from launch_ros.actions import Node
-from launch.actions import IncludeLaunchDescription, ExecuteProcess
+from launch.actions import IncludeLaunchDescription, ExecuteProcess#, TimerAction
+
+
 
 # from ament_index_python.packages import get_package_share_directory
 # from math import pi, radians
@@ -18,7 +20,13 @@ def generate_launch_description():
     recordings_dir = r'/home/slamnuc/bagfiles'
     recording_name = 'lidar_' + dt_string
 
+    recorded_topics = "/livox/lidar"
 
+    print(f"Recording to folder: {recording_name}")
+
+    # sync_time_ptpd = ExecuteProcess(
+    #     cmd=[""]
+    # ) 
 
     lidar_driver_node = IncludeLaunchDescription(
         launch_description_source='/home/slamnuc/ws_livox/src/livox_ros2_driver/launch/livox_lidar_launch.py',
@@ -26,26 +34,28 @@ def generate_launch_description():
     )
     
     bag_node = ExecuteProcess(
-            cmd=['ros2', 'bag', 'record', '-a', '-o', os.path.join(recordings_dir, recording_name)],
+            cmd=['ros2', 'bag', 'record', recorded_topics, '-o', os.path.join(recordings_dir, recording_name)],
             output='screen'
     )
    
 
     # to follow in rviz
-    transform_node_livox = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        arguments = [ '0', '0', '0', '0', '0', '0' , 'odom', 'livox_frame']
+    # transform_node_livox = Node(
+    #     package='tf2_ros',
+    #     executable='static_transform_publisher',
+    #     arguments = [ '0', '0', '0', '0', '0', '0' , 'odom', 'livox_frame']
     
-    )
+    # )
  
+    # TimerAction(period=60.0,
+    #         actions=[Node(...), Node(...)]),
     
 
 
 
 
     ld.add_action(lidar_driver_node)
-    ld.add_action(transform_node_livox)
+    # ld.add_action(transform_node_livox)
     ld.add_action(bag_node)
 
     return ld

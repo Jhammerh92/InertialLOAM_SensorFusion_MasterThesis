@@ -9,7 +9,7 @@ def generate_launch_description():
 
     # Specify the name of the package and path to xacro file within the package
     pkg_name = 'my_learning_package'
-    file_subpath = 'urdf/loam_robot_01.urdf.xacro'
+    file_subpath = 'urdf/loam_robot_viz.urdf.xacro'
 
 
     # Use xacro to process the file
@@ -25,8 +25,15 @@ def generate_launch_description():
         parameters=[{'robot_description': robot_description_raw}] # add other parameters here if required
     )
 
+    # node_joint_state_publisher_gui = Node(
+    #     package='joint_state_publisher_gui',
+    #     executable='joint_state_publisher_gui',
+    #     # output='screen',
+    # )
+
 
     # Run the node
     return LaunchDescription([
-        node_robot_state_publisher
+        node_robot_state_publisher,
+        # node_joint_state_publisher_gui
     ])

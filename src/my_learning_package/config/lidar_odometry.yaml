@@ -7,8 +7,10 @@ lidar_odometry:
     keyframe_threshold_fitness: 0.5
     keyframe_threshold_index: 0
     icp_max_iterations: 50
-    icp_max_correspondance_distance: 0.1
-    local_map_width: 20
+    icp_max_correspondance_distance: 0.05
+    local_map_width: 40
+    local_map_init_frames_count_: 10
+    points_per_cloud_scale: 20
     use_cloud_scale_for_ds: true
     use_fusion_with_imu: false
 

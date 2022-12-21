@@ -1,0 +1,65 @@
+<?xmm version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="loam_robot_01">
+
+    <!-- <material name="light_brown" >
+        <color rgba="1.0 0.9 0.6 1" />
+    </material> -->
+
+
+    <!-- <xacro:include filename="gazebo_control.xacro"/> -->
+
+    <!-- include lidar mid 70 -->
+    <xacro:include filename="mid70.urdf.xacro"/>
+
+    <xacro:include filename="MTi_10.urdf.xacro"/>
+    <!-- <xacro:include filename="materials.urdf.xacro"/> -->
+    <!-- <xacro:include filename="AionR1.urdf.xacro"/> -->
+
+
+    <link name="data_platform_base_link" >
+        <visual>
+            <origin xyz="0 0 0"/> <!-- x = 0.097/2 - 0.00162  z = 0.0627/2 - 0.0324, from manual of mid70, see center point location page 15-->
+            <geometry>
+                <box size="0.30 0.343 0.003" />
+            </geometry>
+            <material name="light_brown" />
+        </visual>
+    </link>
+    
+    
+    <joint name="lidar_joint" type="fixed">
+        <parent link="data_platform_base_link"/>
+        <child link="livox_frame"/>  <!--  TODO: need to rename the frame of the lidar at some point..-->
+        <origin xyz="0.15 0 0.04"/>
+    </joint> 
+
+
+    
+    
+    <!-- small plywood plate on top of lidar connection the imu to lidar -->
+    <link name="mounting_plate" >
+        <visual>
+            <origin xyz="0 0 0"/> <!-- x = 0.097/2 - 0.00162  z = 0.0627/2 - 0.0324, from manual of mid70, see center point location page 15-->
+            <geometry>
+                <box size="0.0708 0.0596 0.003" />
+            </geometry>
+            <material name="light_brown" />
+        </visual>
+    </link>
+    
+    <joint name="mounting_plate_joint" type="fixed">
+        <parent link="livox_frame"/>
+        <child link="mounting_plate" />
+        <origin xyz="-0.04275 0 0.0318"/>
+    </joint>
+    
+
+    <joint name="imu_joint" type="fixed">
+        <parent link="mounting_plate"/>
+        <child link="imu_base_link" />
+        <origin xyz="-0.0246 0.017 0.0015"/>
+    </joint>
+
+    
+
+</robot>

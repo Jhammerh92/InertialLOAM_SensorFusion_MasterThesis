@@ -4,13 +4,13 @@
    
 
     <xacro:include filename="inertial_macros.xacro"/> 
-
+    <!-- <xacro:include filename="materials.urdf.xacro"/> -->
 <!-- <?xml version="1.0" ?>
 <sdf version="1.5"> -->
   <!-- <model name="aion_robotics_r1_rover"> -->
 
     <!-- MATERIALS / COLOURS -->
-    <material name="white">
+    <!-- <material name="white">
         <color rgba="1 1 1 1"/>
     </material>
     <material name="gray">
@@ -18,7 +18,7 @@
     </material>
     <material name="black">
         <color rgba="0 0 0 1"/>
-    </material>
+    </material> -->
 
 
 

@@ -61,6 +61,9 @@ ament_target_dependencies(preprocessing ${dependencies})
 add_executable(loam_backend src/Backend.cpp)
 ament_target_dependencies(loam_backend ${dependencies})
 
+# add_executable(format_convert src/FormatConvert.cpp)
+# ament_target_dependencies(format_convert ${dependencies})
+
 # velodyne files
 add_executable(preprocessing_velodyne src/PreprocessingVelodyne.cpp)
 ament_target_dependencies(preprocessing_velodyne ${dependencies})
@@ -89,6 +92,7 @@ install(TARGETS
   lidar_odometry
   preprocessing
   loam_backend
+  # format_convert
   preprocessing_velodyne
   lidar_odometry_velodyne
   DESTINATION lib/${PROJECT_NAME}

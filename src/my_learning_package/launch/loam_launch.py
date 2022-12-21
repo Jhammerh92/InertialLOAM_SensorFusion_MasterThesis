@@ -45,11 +45,17 @@ def generate_launch_description():
         arguments = [ '0', '0', '0', '0', '0', '0' , 'odom', 'base_link']
     
     )
-    transform_node_preproc = Node(
+    # transform_node_preproc = Node(
+    #     package='tf2_ros',
+    #     executable='static_transform_publisher',
+    #     arguments = [ '0', '0', '0', '0', '0', '0' , 'odom', 'lidar_preproc']
+    # 
+    # )
+
+    transform_node_global_map = Node( # this should change in the future if the map is ever going to be firm and disconnected from odometry
         package='tf2_ros',
         executable='static_transform_publisher',
-        arguments = [ '0', '0', '0', '0', '0', '0' , 'odom', 'lidar_preproc']
-    
+        arguments = [ '0', '0', '0', '0', '0', '0' , 'global_map', 'odom']
     )
     
     transform_node_odom = Node(
@@ -58,11 +64,13 @@ def generate_launch_description():
         arguments = [ '0', '0', '0', '0', '0', '0' , 'odom', 'lidar_odom']
     )
 
-    transform_node_global_map = Node(
+
+    transform_node_lidar_odom = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
-        arguments = [ '0', '0', '0', '0', '0', '0' , 'odom', 'global_map']
+        arguments = [ '0', '0', '0', '0', '0', '0' , 'lidar_odom', 'livox_frame']
     )
+
     
 
 
@@ -72,8 +80,9 @@ def generate_launch_description():
     ld.add_action(backend_node)
     ld.add_action(lidar_odometry_node)
     ld.add_action(transform_node_livox)
-    ld.add_action(transform_node_preproc)
-    ld.add_action(transform_node_odom)
+    # ld.add_action(transform_node_preproc)
     ld.add_action(transform_node_global_map)
+    ld.add_action(transform_node_odom)
+    ld.add_action(transform_node_lidar_odom)
     ld.add_action(rsp)
     return ld
