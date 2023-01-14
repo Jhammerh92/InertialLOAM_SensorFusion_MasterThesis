@@ -19,6 +19,9 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl_conversions/pcl_conversions.h>
 
+
+
+
 #include <memory>
 #include <cstdio>
 #include <cmath>
@@ -87,7 +90,7 @@ class Backend : public rclcpp::Node
     
     public:
         Backend() // constructer
-        : Node("slam_fusion_backend")
+        : Node("mapping_backend")
         {   
             allocateMemory();
 
@@ -112,7 +115,7 @@ class Backend : public rclcpp::Node
             odometry_pub = this->create_publisher<nav_msgs::msg::Odometry>("/odom_backend", 100);
             path_pub = this->create_publisher<nav_msgs::msg::Path>("/path_backend", 100);
 
-            float global_map_ds_leafsize = 0.02;
+            float global_map_ds_leafsize = 0.001;
             global_map_ds_filter.setLeafSize(global_map_ds_leafsize, global_map_ds_leafsize, global_map_ds_leafsize);
 
             new_cloud_ready = false;

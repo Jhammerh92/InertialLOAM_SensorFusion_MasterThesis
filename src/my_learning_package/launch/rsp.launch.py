@@ -31,9 +31,25 @@ def generate_launch_description():
     #     # output='screen',
     # )
 
+    # transform_node_map_odom = Node(
+    #     package='tf2_ros',
+    #     executable='static_transform_publisher',
+    #     arguments = [ '0', '0', '0', '0', '0', '0' , 'map', 'odom']
+    # )
+
+    transform_node_odom_base_link = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        arguments = [ '0', '0', '0', '0', '0', '0' , 'odom', 'base_link']
+    )
+
+    
+
 
     # Run the node
     return LaunchDescription([
         node_robot_state_publisher,
+        transform_node_odom_base_link,
+        # transform_node_map_odom,
         # node_joint_state_publisher_gui
     ])

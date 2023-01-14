@@ -17,7 +17,6 @@
 
 
     <link name="base_link">
-    
     </link>
 
     <joint name="aionr1_joint" type="fixed">
@@ -26,10 +25,11 @@
         <origin xyz="-0.20 0 0"/>
     </joint>
 
+    <!-- subtract 1 mm to z for the Aion top plate thicknes -->
     <joint name="data_platform_joint" type="fixed">
         <parent link="top_plate_link"/>
         <child link="data_platform_base_link" />
-        <origin xyz="0 0 0.05"/>
+        <origin xyz="0 0 0.0447"/>
     </joint>
 
 

@@ -9,6 +9,17 @@
         <color rgba="0.8 0.8 0.8 1" />
     </material> -->
 
+    <!-- low back edge in the center line -->
+    <link name="livox_base">
+
+    </link>
+
+    <joint name="livox_base_to_frame" type="fixed">
+        <parent link="livox_base"/>
+        <child link="livox_frame"/>  
+        <origin xyz="0.0794 0 0.0324"/>  <!--x 0.0794, should be 97 -16.2 = 80.2 mm? y 0 z 0.0324 -->
+    </joint>
+
 
     <link name="livox_frame" >
         <visual>

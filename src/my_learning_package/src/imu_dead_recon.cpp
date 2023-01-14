@@ -39,7 +39,7 @@ class MinimalSubscriber : public rclcpp::Node
 
 
 
-            data_subscriber_ = this->create_subscription<sensor_msgs::msg::Imu>("imu/data", 1, std::bind(&MinimalSubscriber::subscribe_data, this, _1));
+            data_subscriber_ = this->create_subscription<sensor_msgs::msg::Imu>("imu/data_raw", 1, std::bind(&MinimalSubscriber::subscribe_data, this, _1));
             // imu/data is the output topic of the madgwick filter which processes the ouput from the imu directly via imu/data_raw
 
             // dv_subscriber_ = this->create_subscription<geometry_msgs::msg::Vector3Stamped>("imu/dv", 1, std::bind(&MinimalSubscriber::subscribe_dv, this, _1));
@@ -62,7 +62,6 @@ class MinimalSubscriber : public rclcpp::Node
             velocity_.header.stamp = data->header.stamp;
 
             
-
             geometry_msgs::msg::Vector3 linear_acceleration_w;
             linear_acceleration_w = data->linear_acceleration;
             // apply bias in the imu-frame axes
@@ -108,6 +107,7 @@ class MinimalSubscriber : public rclcpp::Node
             p_publisher_->publish(position_);
         }
 
+
         void add_velocity(geometry_msgs::msg::Vector3 &velocity, geometry_msgs::msg::Vector3 &dv, double noise_gate)
         {
             if (abs(dv.x) > noise_gate){
@@ -121,6 +121,7 @@ class MinimalSubscriber : public rclcpp::Node
             }
         }
 
+
         void rotate_vector_by_quaternion(const tf2::Vector3& v, const tf2::Quaternion& q, tf2::Vector3& vprime)
         {
             tf2::Vector3 u;
@@ -133,6 +134,7 @@ class MinimalSubscriber : public rclcpp::Node
 
             vprime = 2.0f * u.dot(v) * u + (s*s - u.dot(v)) * v + 2.0f * s * u.cross(v);
         }
+
 
         void setTF2vector(tf2::Vector3 &v, double x, double y, double z)
         {

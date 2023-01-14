@@ -32,6 +32,9 @@
 #include <pcl/registration/transformation_estimation_point_to_plane.h>
 #include <pcl/registration/ndt.h>
 
+// #include <pclomp/gicp_omp.h>
+// #include <pclomp/gicp_omp.h>
+
 #include <cmath>
 // #include <ctime>
 // #include <array>
@@ -175,13 +178,14 @@ class LidarOdometry : public rclcpp::Node
 
         std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
+
         // parameters
         // ds_voxelsize
         // ds_voxelsize_lc
         float ds_voxel_size_;
         float ds_voxel_size_lc_;
         // strings
-        std::string frame_id;
+        std::string frame_id = "lidar_odom";
         // this->declare_parameter("my_parameter", "world");
         double keyframe_threshold_angle_;
         double keyframe_threshold_length_;
@@ -197,6 +201,9 @@ class LidarOdometry : public rclcpp::Node
 
         bool use_cloud_scale_for_ds_{};
         bool use_fusion_with_imu_{};
+
+        double ds_lc_voxel_size_ratio_;
+        double cloud_scale_previuos_cloud_weight_;
 
         // publish topics as parameters so they can be changed?
 
@@ -245,6 +252,12 @@ class LidarOdometry : public rclcpp::Node
 
             declare_parameter("use_fusion_with_imu", false); 
             get_parameter("use_fusion_with_imu", use_fusion_with_imu_);
+
+            declare_parameter("cloud_scale_previuos_cloud_weight", 0.5); 
+            get_parameter("cloud_scale_previuos_cloud_weight", cloud_scale_previuos_cloud_weight_);
+
+            declare_parameter("ds_lc_voxel_size_ratio", 3.0); 
+            get_parameter("ds_lc_voxel_size_ratio", ds_lc_voxel_size_ratio_);
 
             // RCLCPP_INFO(get_logger(), "ds_voxel_size in constructor is: %f", ds_voxel_size_);
 
@@ -350,8 +363,9 @@ class LidarOdometry : public rclcpp::Node
 
             // get_parameter("ds_voxel_size", ds_voxel_size_);
 
-            frame_id = "lidar_odom";
-            odom.header.frame_id = frame_id;
+            
+            odom.header.frame_id = "odom";
+            odom.child_frame_id = frame_id;
 
             // // ds_voxel_size = 0.1f;
             // ds_voxel_size = 0.2f;
@@ -424,7 +438,7 @@ class LidarOdometry : public rclcpp::Node
 
 
             odometry_transformation_guess = last_odometry_transformation;
-            registration_transformation = Eigen::Matrix4d::Identity(); // this has to be "resest" as it it is used to determine the next guess
+            registration_transformation = Eigen::Matrix4d::Identity(); // this has to be "reset" as it it is used to determine the next guess
 
 
             latest_keyframe_idx++; // the count of keyframes
@@ -446,59 +460,193 @@ class LidarOdometry : public rclcpp::Node
         }
 
 
+        template <typename PointT>
+        void farthestPointSampling(const boost::shared_ptr<pcl::PointCloud<PointT>> &cloud_in, boost::shared_ptr<pcl::PointCloud<PointT>> &cloud_out, int numberSamples)
+        {
+            vector<int> points_left_idx;
+            vector<int> points_sampled_idx;
+            vector<double> dists;
+            vector<double> dists_to_last_added;
+
+            points_sampled_idx.push_back(0);
+            // cloud_out->points.push_back(cloud_in->points[0]); // push first point to sampled
+
+            for (size_t i = 0; i < cloud_in->points.size(); i++){
+                dists.push_back(std::numeric_limits<double>::max ()); // infinite distances
+                if (i == 0)
+                    continue;
+                points_left_idx.push_back(i); // 0 is not added because if statement above
+
+            }
+
+            PointType point;
+            // for (size_t i = 0; i < cloud_in->points.size(); i++)
+            for (int i = 0; i < numberSamples; i++)
+            {
+                // get the last added index
+                int last_added_idx = points_sampled_idx.back();
+
+                // calculate distances to the last added point
+                dists_to_last_added.clear();
+                for (size_t j = 0; j < points_left_idx.size() - i; j++)
+                {
+                    double dist = (cloud_in->points[points_left_idx[j]].getVector4fMap () - 
+                            cloud_in->points[last_added_idx].getVector4fMap ()).squaredNorm ();
+                    dists_to_last_added.push_back(dist);
+                }
+
+                // update distances ie. get shortest of dist_to_last_added and dists , mayeb combine this with the next loop to save a loop,
+                for (size_t k = 0; k < points_left_idx.size(); k++)
+                {
+                    if (dists_to_last_added[k] < dists[points_left_idx[k]]){
+                        dists[points_left_idx[k]] = dists_to_last_added[k];
+                    }
+                }
+
+                // find the index of the point in points_left with the largest distance
+                double max_dist = std::numeric_limits<double>::min ();
+                int idx_max{};
+                int selected{};
+                for (size_t l = 0; l < points_left_idx.size(); l++) {
+                    if (dists[points_left_idx[l]] <= max_dist)
+                        continue;
+                    max_dist = dists[points_left_idx[l]];
+                    idx_max = l;
+                    selected = points_left_idx[l];
+                }
+
+                // add that index to sampled and remove from points_left
+                points_sampled_idx.push_back(selected);
+                points_left_idx.erase(points_left_idx.begin()+idx_max);
+
+                // point = lidar_cloud_in->points[i];
+            }
+
+            pcl::PointCloud<PointType>::Ptr sampled = boost::make_shared<pcl::PointCloud<PointType>>();
+
+            // assign points to sampled from found indices
+            for (size_t i = 0; i < points_sampled_idx.size(); i++)
+            {
+                sampled->points.push_back(cloud_in->points[points_sampled_idx[i]]);
+            }
+
+            cloud_out = sampled;
+        }
+
 
         void downSampleClouds() {
             // down_size_filter_surf_map.setInputCloud(surf_from_map);
             // down_size_filter_surf_map.filter(*surf_from_map_ds);
 
-            if (use_cloud_scale_for_ds_ == true) {
-                calcCloudScale();
-                double prev_cloud_weight = 0.0;
-                double new_cloud_scale = prev_cloud_scale * prev_cloud_weight + cloud_scale * (1 - prev_cloud_weight); // calculate new scale as weighted average between old and new
-                RCLCPP_INFO(get_logger(), "cloud scale is: %f, prev: %f, new scale is: %f", cloud_scale, prev_cloud_scale, new_cloud_scale);
-                float temp_leafsize = new_cloud_scale / float(points_per_cloud_scale_); // 25 points from side to side by default
-                float temp_leafsize_lc = temp_leafsize / float(3); // best have as uneven number to have center point ?
-                down_size_filter.setLeafSize(temp_leafsize, temp_leafsize, temp_leafsize);
-                down_size_filter_local_map.setLeafSize(temp_leafsize_lc, temp_leafsize_lc, temp_leafsize_lc);
-                prev_cloud_scale = new_cloud_scale;
-            }
+            // if (use_cloud_scale_for_ds_ == true) {
+            //     calcCloudScale();
+            //     double prev_cloud_weight = 0.5;
+            //     double new_cloud_scale = prev_cloud_scale * prev_cloud_weight + cloud_scale * (1 - prev_cloud_weight); // calculate new scale as weighted average between old and new
+            //     RCLCPP_INFO(get_logger(), "cloud scale is: %f, prev: %f, new scale is: %f", cloud_scale, prev_cloud_scale, new_cloud_scale);
+            //     float temp_leafsize = new_cloud_scale / float(points_per_cloud_scale_); // 25 points from side to side by default
+            //     float temp_leafsize_lc = temp_leafsize / float(3); // best have as uneven number to have center point ?
+            //     down_size_filter.setLeafSize(temp_leafsize, temp_leafsize, temp_leafsize);
+            //     down_size_filter_local_map.setLeafSize(temp_leafsize_lc, temp_leafsize_lc, temp_leafsize_lc);
+            //     prev_cloud_scale = new_cloud_scale;
+            // }
+
+            setCloudScale();
 
             cloud_in_ds->clear();
+
             down_size_filter.setInputCloud(cloud_in);
             down_size_filter.filter(*cloud_in_ds);
+            // farthestPointSampling(cloud_in, cloud_in_ds, 1000);
+
 
             cloud_keyframe_ds->clear();
             down_size_filter.setInputCloud(cloud_keyframe);
             down_size_filter.filter(*cloud_keyframe_ds);
         }
 
+
+        void setCloudScale()
+        {
+            if (use_cloud_scale_for_ds_ == true) {
+                calcCloudScale();
+                double prev_cloud_weight = cloud_scale_previuos_cloud_weight_;
+                double new_cloud_scale = prev_cloud_scale * prev_cloud_weight + cloud_scale * (1 - prev_cloud_weight); // calculate new scale as weighted average between old and new
+                RCLCPP_INFO(get_logger(), "cloud scale is: %f, prev: %f, new scale is: %f", cloud_scale, prev_cloud_scale, new_cloud_scale);
+                float temp_leafsize = new_cloud_scale / float(points_per_cloud_scale_); // 25 points from side to side by default
+                float temp_leafsize_lc = temp_leafsize / float(ds_lc_voxel_size_ratio_); // best have as uneven number to have center point ?
+                down_size_filter.setLeafSize(temp_leafsize, temp_leafsize, temp_leafsize);
+                down_size_filter_local_map.setLeafSize(temp_leafsize_lc, temp_leafsize_lc, temp_leafsize_lc);
+                prev_cloud_scale = new_cloud_scale;
+            }
+        }
+
+
+
+        void calcCloudScale()
+        {
+            // cloud_scale = getMaxSegment(*cloud_in); // was! very slow! for a 10 000 point cloud it does 100 mil iterations ie. O(n²)
+            cloud_scale = getMaxLeftRight(*cloud_in); // this only uses O(n) but is not guaranteed to find the largest distance, only a usable distance
+        }
+
         template <typename PointT> double inline
         getMaxSegment (const pcl::PointCloud<PointT> &cloud)
         {
             double max_dist = std::numeric_limits<double>::min ();
+            double max_left = std::numeric_limits<double>::min ();
             int i_min = -1, i_max = -1;
+            int i_left = -1;
 
+            // new method N*2 iterations
+            // find leftmost point
             for (size_t i = 0; i < cloud.points.size (); ++i)
-            {
-                for (size_t j = i; j < cloud.points.size (); ++j)
-                {
-                    // Compute the distance 
-                    double dist = (cloud.points[i].getVector4fMap () - 
-                                cloud.points[j].getVector4fMap ()).squaredNorm ();
-                    if (dist <= max_dist)
-                    continue;
-
-                    max_dist = dist;
-                    i_min = i;
-                    i_max = j;
+            {        
+                double y_val = cloud.points[i].y;
+                // Compute the distance 
+                // double dist = (cloud.points[i].getVector4fMap () - 
+                //             cloud.points[j].getVector4fMap ()).squaredNorm ();
+                if (y_val <= max_left) {
+                    max_left = y_val;
+                    i_left = i;
                 }
             }
+            i_min = i_left;
+
+            // need find the distance to farhest point from this.
+            for (size_t i = 0; i < cloud.points.size (); ++i)
+            {   
+                // Compute the distance 
+                double dist = (cloud.points[i_left].getVector4fMap () - 
+                            cloud.points[i].getVector4fMap ()).squaredNorm ();
+                if (dist <= max_dist)
+                    continue;
+
+                max_dist = dist;
+                // i_min = i_left;
+                i_max = i;
+                // max_right = y_val;
+                // i_right = i;
+            }
+            
+            // Old method -> N² iterations, very slow
+            // for (size_t i = 0; i < cloud.points.size (); ++i)
+            // {
+            //     for (size_t j = i; j < cloud.points.size (); ++j)
+            //     {
+            //         // Compute the distance 
+            //         double dist = (cloud.points[i].getVector4fMap () - 
+            //                     cloud.points[j].getVector4fMap ()).squaredNorm ();
+            //         if (dist <= max_dist)
+            //         continue;
+
+            //         max_dist = dist;
+            //         i_min = i;
+            //         i_max = j;
+            //     }
+            // }
 
             if (i_min == -1 || i_max == -1)
             return (max_dist = std::numeric_limits<double>::min ());
 
-            // pmin = cloud.points[i_min];
-            // pmax = cloud.points[i_max];
             return (std::sqrt (max_dist));
         }
 
@@ -542,14 +690,10 @@ class LidarOdometry : public rclcpp::Node
             return dist;
         }
 
-        void calcCloudScale()
-        {
-            // cloud_scale = getMaxSegment(*cloud_in); // very slow! for a 10 000 point cloud it does 100 mil iterations ie. O(n²)
-            cloud_scale = getMaxLeftRight(*cloud_in); // this only uses O(n) but is not guaranteed to find the largest distance, only a usable distance
-        }
+
 
     
-        void regisrationICP(boost::shared_ptr<pcl::PointCloud<PointType>> source, const boost::shared_ptr<pcl::PointCloud<PointType>> target)
+        void regisrationICP(boost::shared_ptr<pcl::PointCloud<PointType>> source, const boost::shared_ptr<pcl::PointCloud<PointType>> target, bool use_initial_course)
         {
             typedef pcl::registration::TransformationEstimationPointToPlane<PointType, PointType> PointToPlane;
             // maybe not setup the icp on every use
@@ -561,33 +705,85 @@ class LidarOdometry : public rclcpp::Node
             // pcl::NormalDistributionsTransform<PointType, PointType> icp;
             // icp.setResolution(1.0);
 
-            boost::shared_ptr<PointToPlane> p2p(new PointToPlane);
+            boost::shared_ptr<PointToPlane> p2pl(new PointToPlane);
+            icp.setTransformationEstimation(p2pl);
 
-            // double max_correspondance_distance = 0.05;
             double max_correspondance_distance = icp_max_correspondance_distance_;
 
-            icp.setTransformationEstimation(p2p);
+            icp.setUseSymmetricObjective(true);
+            icp.setEnforceSameDirectionNormals(true);
 
             icp.setInputSource(source);
             icp.setInputTarget(target);
-
-            // course estimation first to get a better initial estimate of transformation
-            icp.setMaxCorrespondenceDistance(20*max_correspondance_distance);
-            icp.setMaximumIterations(10);
-            icp.setTransformationEpsilon(1e-2);
-            icp.setEuclideanFitnessEpsilon(1e-6);
-            // icp.setRANSACIterations(10);
-
-            // icp_nl.setInputSource(source);
-            // icp_nl.setInputTarget(target);
-
-            // icp_nl.setMaxCorrespondenceDistance(0.1);
-            // icp_nl.setMaximumIterations(50);
-            // icp_nl.setTransformationEpsilon(1e-6);
-            // icp_nl.setEuclideanFitnessEpsilon(1e-2);
+            icp.setEuclideanFitnessEpsilon(1e-3);
+            icp.setRANSACIterations(10);
+            icp.setRANSACOutlierRejectionThreshold(1.5);
 
             pcl::PointCloud<PointType>::Ptr aligned_cloud(new pcl::PointCloud<PointType>());
-            // Eigen::Matrix4f init_guess = Eigen::Matrix4f::Identity(); // should be a better guess anyway
+            Eigen::Matrix4f init_guess = odometry_transformation_guess.cast<float>(); // should be a better guess anyway
+
+            if (use_initial_course) {
+
+                // course estimation first to get a better initial estimate of transformation
+                icp.setMaxCorrespondenceDistance(50*max_correspondance_distance);
+                icp.setMaximumIterations(15);
+                icp.setTransformationEpsilon(1e-1);
+
+                icp.align(*aligned_cloud, init_guess);
+
+                //get icp transformation 
+                init_guess = icp.getFinalTransformation();//.cast<double>(); // why cast to double??
+            }
+
+            // second iteration with finer correspondence limit
+            icp.setMaxCorrespondenceDistance(max_correspondance_distance);
+            icp.setMaximumIterations(icp_max_iterations_);
+            icp.setTransformationEpsilon(1e-9);
+            icp.align(*aligned_cloud, init_guess);
+
+            Eigen::Matrix4f registration_transform;
+            registration_transform = icp.getFinalTransformation();//.cast<double>(); // why cast to double??
+
+            
+            Eigen::Matrix4d registration_transform_double = registration_transform.cast<double>();
+            
+            registration_transformation = registration_transform_double;
+
+            // make transform matrix into quaternion and vector
+            // Eigen::Quaterniond reg_quarternion(registration_transform_double.block<3, 3>(0, 0)); 
+            // Eigen::Vector3d reg_translation(registration_transform_double.block<3, 1>(0, 3));
+
+            icp_fitness = icp.getFitnessScore();
+            
+            RCLCPP_INFO(get_logger(), "ICP has converged: %i,  score: %f", icp.hasConverged(), icp_fitness);
+
+
+            return;
+        }
+
+        void regisrationICP_gcip(boost::shared_ptr<pcl::PointCloud<PointType>> source, const boost::shared_ptr<pcl::PointCloud<PointType>> target)
+        {
+
+            // maybe not setup the icp on every use
+     
+            pcl::GeneralizedIterativeClosestPoint<PointType, PointType> icp;
+
+
+            double max_correspondance_distance = icp_max_correspondance_distance_;
+
+            icp.setInputSource(source);
+            icp.setInputTarget(target);
+            icp.setEuclideanFitnessEpsilon(1e-3);
+            icp.setRANSACIterations(10);
+            icp.setRANSACOutlierRejectionThreshold(1.5);
+
+
+            // course estimation first to get a better initial estimate of transformation
+            icp.setMaxCorrespondenceDistance(50*max_correspondance_distance);
+            icp.setMaximumIterations(15);
+            icp.setTransformationEpsilon(1e-1);
+
+            pcl::PointCloud<PointType>::Ptr aligned_cloud(new pcl::PointCloud<PointType>());
             icp.align(*aligned_cloud, odometry_transformation_guess.cast<float>());
 
             //get icp transformation and use 
@@ -595,10 +791,9 @@ class LidarOdometry : public rclcpp::Node
             registration_transform = icp.getFinalTransformation();//.cast<double>(); // why cast to double??
 
             // second iteration with finer correspondence limit
-
             icp.setMaxCorrespondenceDistance(max_correspondance_distance);
             icp.setMaximumIterations(icp_max_iterations_);
-            icp.setTransformationEpsilon(1e-6);
+            icp.setTransformationEpsilon(1e-9);
             icp.align(*aligned_cloud, registration_transform);
 
             registration_transform = icp.getFinalTransformation();//.cast<double>(); // why cast to double??
@@ -618,27 +813,6 @@ class LidarOdometry : public rclcpp::Node
             icp_fitness = icp.getFitnessScore();
             
             RCLCPP_INFO(get_logger(), "ICP has converged: %i,  score: %f", icp.hasConverged(), icp_fitness);
-
-            // std::cout << "has converged:" << icp.hasConverged() << " score: " <<
-            // icp.getFitnessScore() << std::endl;
-            // std::cout << icp.getFinalTransformation() << std::endl;
-
-
-            // send found pose to rel_pose
-
-            // // create function to push new_via abs_pose
-            // PoseInfo new_pose;
-            // rel_pose[0] = reg_quarternion.w();
-            // rel_pose[1] = reg_quarternion.x();
-            // rel_pose[2] = reg_quarternion.y();
-            // rel_pose[3] = reg_quarternion.z();
-            // rel_pose[4] = reg_translation.x();
-            // rel_pose[5] = reg_translation.y();
-            // rel_pose[6] = reg_translation.z();
-            // new_pose.idx = odometry_pose_info->points.size();
-            // new_pose.time = time_new_cloud.nanoseconds();
-
-            // odometry_pose_info->push_back(new_pose);
 
 
             return;
@@ -676,7 +850,7 @@ class LidarOdometry : public rclcpp::Node
 
             // and get icp fitness
 
-            // assert if any is beyong thresholds
+            // assert if any is beyond thresholds
 
             return (length > keyframe_threshold_length_ || angle > keyframe_threshold_angle_ || icp_fitness > keyframe_threshold_fitness_ );
         }
@@ -684,7 +858,7 @@ class LidarOdometry : public rclcpp::Node
 
         void savePose()
         {
-            // function to push new_pose to odometries, saved quaternion and translation
+            // function to push new_pose to odometries, saved as quaternion and translation
 
             Eigen::Quaterniond reg_quarternion(last_odometry_pose.block<3, 3>(0, 0)); 
             reg_quarternion.normalize();
@@ -785,6 +959,8 @@ class LidarOdometry : public rclcpp::Node
             size_t max_frames = local_map_width_;
             // int latest_keyframe_idx = keyframe_index.back();
 
+            // IDEA: get closest frames from as KD knn search as the odometry points are saved as a point cloud, and use the neighbourhood clouds as local map. -> this requires and is close to loop closure 
+
             // Initialization
             // if (local_map->points.size() <= 1) { // if there are no point in the local map
             //     // ROS_INFO("Initialization for odometry local map");
@@ -820,12 +996,12 @@ class LidarOdometry : public rclcpp::Node
             pcl::PointCloud<PointType>::Ptr transformed_cloud = boost::make_shared<pcl::PointCloud<PointType>>();
             if (recent_frames.size() < max_frames ) {
                 
-                RCLCPP_INFO(get_logger(), "Less than 20 frames in local map, size: %i, odomsize: %i, index:%i", recent_frames.size(),i, latest_frame_idx);
+                RCLCPP_INFO(get_logger(), "Less than limit (%i) frames in local map, size: %i, odomsize: %i, index:%i", local_map_width_ ,recent_frames.size(),i, latest_frame_idx);
                 pcl::transformPointCloudWithNormals<PointType>(*all_clouds[i], *transformed_cloud, keyframe_poses[i]);
                 recent_frames.push_back(transformed_cloud);
             } 
             else {
-                RCLCPP_INFO(get_logger(), "More than 20 frames in local map, size:%i  index:%i", recent_frames.size(), latest_frame_idx);
+                RCLCPP_INFO(get_logger(), "More than limit (%i) frames in local map, size:%i  index:%i", local_map_width_, recent_frames.size(), latest_frame_idx);
                 // if (latest_frame_idx != odometry_pose_info->points.size() - 1) {
 
                 recent_frames.pop_front();
@@ -835,13 +1011,25 @@ class LidarOdometry : public rclcpp::Node
             }
             
             
+            // local_map->clear();
+            // local_map_ds->clear();
+            // pcl::PointCloud<PointType>::Ptr downsampled_cloud = boost::make_shared<pcl::PointCloud<PointType>>();
+            // for (size_t i = 0; i < recent_frames.size(); ++i){
+
+            //     down_size_filter_local_map.setInputCloud(recent_frames[i]);
+            //     down_size_filter_local_map.filter(*downsampled_cloud);
+
+            //     // *local_map += *recent_frames[i];
+            //     *local_map_ds += *downsampled_cloud;
+            // }
+
+
             local_map->clear();
             for (size_t i = 0; i < recent_frames.size(); ++i){
                 *local_map += *recent_frames[i];
             }
 
-
-
+            // try and downsample each keyframe in the local map instead of 
             local_map_ds->clear();
             down_size_filter_local_map.setInputCloud(local_map);
             down_size_filter_local_map.filter(*local_map_ds);
@@ -853,11 +1041,13 @@ class LidarOdometry : public rclcpp::Node
             #endif
             // msgs.header.stamp = ros::Time().fromSec(time_new_cloud);
             msgs.header.stamp = time_new_cloud; 
-            msgs.header.frame_id = frame_id;
+            // msgs.header.frame_id = frame_id;
+            msgs.header.frame_id = "lidar_odom";
             localcloud_pub->publish(msgs);
+            RCLCPP_INFO(get_logger(), "Local map published!");
             // global_cloud->clear();
 
-            // transform back to origo
+            // transform the local map back to "origo" for it to be matchable with the most recent cloud
             Eigen::Matrix4d inverse_keyframe_pose = keyframe_poses[keyframe_poses.size() - 1].inverse();
             pcl::transformPointCloudWithNormals<PointType>(*local_map_ds, *local_map_ds, inverse_keyframe_pose );
 
@@ -915,14 +1105,17 @@ class LidarOdometry : public rclcpp::Node
             odom.pose.pose.position.x = latestPoseInfo.x;
             odom.pose.pose.position.y = latestPoseInfo.y;
             odom.pose.pose.position.z = latestPoseInfo.z;
-            odometry_pub->publish(odom); // this should be a map to odom transform, which is just static atm..
+            // odom.twist.twist.linear.x // add the velocities in twist
+            odometry_pub->publish(odom);
+
+
 
             // odom -> base_link transform
             geometry_msgs::msg::TransformStamped t_;
             // t_.header.stamp = this->get_clock()->now();
             t_.header.stamp = cloud_header.stamp;
-            t_.header.frame_id = "odom";
-            t_.child_frame_id = "base_link"; // lidar_odom is connected to livox_frame in mid70 urdf file
+            t_.header.frame_id = "odom";//"lidar_odom";
+            t_.child_frame_id = "base_link"; // "livox_frame"
 
             t_.transform.rotation.w = odom.pose.pose.orientation.w;
             t_.transform.rotation.x = odom.pose.pose.orientation.x;
@@ -940,7 +1133,8 @@ class LidarOdometry : public rclcpp::Node
             poseStamped.header.stamp = odom.header.stamp;
             path.header.stamp = odom.header.stamp;
             path.poses.push_back(poseStamped);
-            path.header.frame_id = frame_id;
+            // path.header.frame_id = frame_id;
+            path.header.frame_id = "odom"; // "livox_frame"
             path_pub->publish(path);
         }
 
@@ -966,6 +1160,8 @@ class LidarOdometry : public rclcpp::Node
         //     path.header.frame_id = frame_id;
         //     path_pub->publish(path);
         // }
+
+      
 
         bool getNextInBuffer()
         {
@@ -996,6 +1192,7 @@ class LidarOdometry : public rclcpp::Node
             if (!getNextInBuffer()){
                 return;
             }
+            
 
             if (!system_initialized){
                 // save first pose and point cloud and initialize the system
@@ -1007,7 +1204,7 @@ class LidarOdometry : public rclcpp::Node
             }
 
             if (local_map_init_frames_count_ > 0 && !init_map_built){
-                if (keyframe_poses.size() < size_t(local_map_init_frames_count_)) {
+                if (keyframe_poses.size() <= size_t(local_map_init_frames_count_)) {
                     RCLCPP_INFO(get_logger(), "Adding frame to initial local map by assuming no movement! ");
                     publishCurrentCloud();
                     pushKeyframe();
@@ -1015,6 +1212,7 @@ class LidarOdometry : public rclcpp::Node
                     savePose();
                     savePointCloud();
                     publishOdometry(); 
+                    buildLocalMapAroundKeyFrame();
                     return;
                 }
                 if (keyframe_poses.size() >= size_t(local_map_init_frames_count_)) {
@@ -1028,7 +1226,6 @@ class LidarOdometry : public rclcpp::Node
 
             }
 
-
             downSampleClouds();
             RCLCPP_INFO(get_logger(), "This is from RUN: frame_id: %s,  time of PCL: %f, num points: %i", cloud_header.frame_id.c_str(), time_new_cloud.nanoseconds()/1e9, cloud_in_ds->points.size());
             
@@ -1037,13 +1234,14 @@ class LidarOdometry : public rclcpp::Node
 
             // do icp with last key frame or rather local map
             // regisrationICP(cloud_in_ds, cloud_keyframe_ds); // source, target - such that t = s*T, where T is the transformation. If source is the new frame the transformation found is the inverse of the odometry transformation 
-            regisrationICP(cloud_in_ds, local_map_ds); // source, target - such that t = s*T, where T is the transformation. If source is the new frame the transformation found is the inverse of the odometry transformation 
+            regisrationICP(cloud_in_ds, local_map_ds, true); // source, target - such that t = s*T, where T is the transformation. If source is the new frame the transformation found is the inverse of the odometry transformation 
 
             updateOdometryPose();
 
             // *cloud_prev_ds = *cloud_in_ds;
             
             publishCurrentCloud();
+            // create publishCurrentOdometry() so the position in rviz updates inbetween keyframes
 
             if (newKeyframeRequired() == true) {
                 pushKeyframe();
@@ -1053,7 +1251,6 @@ class LidarOdometry : public rclcpp::Node
                 publishOdometry(); 
 
                 buildLocalMapAroundKeyFrame();
-                // publishGlobalCloud();
 
             }
 

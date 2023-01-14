@@ -19,7 +19,7 @@ def generate_launch_description():
     # transform_node_livox = Node(
     #     package='tf2_ros',
     #     executable='static_transform_publisher',
-    #     arguments = [ '0', '0', '0', '0', '0', '0' , 'odom', 'livox_frame']
+    #     arguments = [ '0', '0', '0', '0', '0', '0' , 'odom', 'base_link']
     # )
 
     # transform_node_preproc = Node(
@@ -32,13 +32,13 @@ def generate_launch_description():
     # transform_node_odom = Node(
     #     package='tf2_ros',
     #     executable='static_transform_publisher',
-    #     arguments = [ '0', '0', '0', '0', '0', '0' , 'odom', 'lidar_odom']
+    #     arguments = [ '0', '0', '0', '0', '0', '0' , 'livox_frame', 'lidar_odom']
     # )
 
     # transform_node_global_map = Node(
     #     package='tf2_ros',
     #     executable='static_transform_publisher',
-    #     arguments = [ '0', '0', '0', '0', '0', '0' , 'odom', 'global_map']
+    #     arguments = [ '0', '0', '0', '0', '0', '0' , 'global_map', 'odom']
     # )
     
 

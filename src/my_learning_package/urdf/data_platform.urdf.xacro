@@ -15,49 +15,172 @@
     <!-- <xacro:include filename="materials.urdf.xacro"/> -->
     <!-- <xacro:include filename="AionR1.urdf.xacro"/> -->
 
-
-    <link name="data_platform_base_link" >
+    <!-- main wooden platform -->
+    <link name="data_platform_base_link" > 
         <visual>
-            <origin xyz="0 0 0"/> <!-- x = 0.097/2 - 0.00162  z = 0.0627/2 - 0.0324, from manual of mid70, see center point location page 15-->
+            <origin xyz="0 0 -0.0015"/> <!-- x = 0.097/2 - 0.00162  z = 0.0627/2 - 0.0324, from manual of mid70, see center point location page 15-->
             <geometry>
-                <box size="0.30 0.343 0.003" />
+                <box size="0.394 0.23 0.003" />
             </geometry>
             <material name="light_brown" />
         </visual>
     </link>
     
-    
+    <link name="nuc" >
+        <visual>
+            <origin xyz="0.0551 0.02505 0.0551"/>
+            <geometry>
+                <box size="0.112 0.051 0.112"/>
+            </geometry>
+            <material name="black"/>
+        </visual>
+    </link>
+
+
+    <joint name="nuc_joint" type="fixed">
+        <parent link="data_platform_base_link"/> 
+        <child link="nuc"/>  <!--  TODO: correct to livox_base-->
+        <origin xyz="0.0468 0.115 -0.041"/>  <!-- see mid-70 documentation for center of origin of lidar-->
+    </joint> 
+
+
     <joint name="lidar_joint" type="fixed">
-        <parent link="data_platform_base_link"/>
-        <child link="livox_frame"/>  <!--  TODO: need to rename the frame of the lidar at some point..-->
-        <origin xyz="0.15 0 0.04"/>
+        <parent link="data_platform_base_link"/> 
+        <child link="livox_base"/>  <!--  TODO: correct to livox_base-->
+        <origin xyz="0.100 0 0.0"/>  <!-- see mid-70 documentation for center of origin of lidar-->
     </joint> 
 
 
     
     
     <!-- small plywood plate on top of lidar connection the imu to lidar -->
-    <link name="mounting_plate" >
+    <!-- x = 0.097/2 - 0.00162  z = 0.0627/2 - 0.0324, from manual of mid70, see center point location page 15-->
+    <link name="mounting_plate_bottom" >
         <visual>
-            <origin xyz="0 0 0"/> <!-- x = 0.097/2 - 0.00162  z = 0.0627/2 - 0.0324, from manual of mid70, see center point location page 15-->
+            <origin xyz="0 0 -0.0015"/> <!-- x = 0.097/2 - 0.00162  z = 0.0627/2 - 0.0324, from manual of mid70, see center point location page 15-->
             <geometry>
-                <box size="0.0708 0.0596 0.003" />
+                <box size="0.10 0.078 0.003" />
+            </geometry>
+            <material name="light_brown" />
+        </visual>
+        <visual>
+            <origin xyz="0.0305 0.023 -0.008"/>
+            <geometry>
+                <cylinder radius="0.00235" length="0.01"/>
+            </geometry>
+        </visual>
+        <visual>
+            <origin xyz="0.0305 -0.023 -0.008"/>
+            <geometry>
+                <cylinder radius="0.00235" length="0.01"/>
+            </geometry>
+        </visual>
+        <visual>
+            <origin xyz="-0.0305 0.023 -0.008"/>
+            <geometry>
+                <cylinder radius="0.00235" length="0.01"/>
+            </geometry>
+        </visual>
+        <visual>
+            <origin xyz="-0.0305 -0.023 -0.008"/>
+            <geometry>
+                <cylinder radius="0.00235" length="0.01"/>
+            </geometry>
+        </visual>
+    </link>
+    
+    <joint name="mounting_plate_dampening_joint" type="fixed">
+        <parent link="mounting_plate_bottom"/>
+        <child link="mounting_plate_top" />
+        <origin xyz="0.0 0 0.015"/>
+    </joint>
+    
+    <link name="mounting_plate_top" >
+        <visual>
+            <origin xyz="0 0 -0.0015"/> <!-- x = 0.097/2 - 0.00162  z = 0.0627/2 - 0.0324, from manual of mid70, see center point location page 15-->
+            <geometry>
+                <box size="0.10 0.078 0.003" /> <!-- old dimensions 0.0708 0.0596 0.003-->
             </geometry>
             <material name="light_brown" />
         </visual>
     </link>
     
+    <joint name="mounting_plate_top_dampening_spacers" type="fixed">
+        <parent link="mounting_plate_top"/>
+        <child link="dampening_rubber_spacers" />
+        <origin xyz="0 0 -0.0015"/>
+    </joint>
+
+
+    <link name="dampening_rubber_spacers" >
+        <visual>
+            <material name="blue" />
+            <origin xyz="0.04 0 -0.0075"/> <!-- x = 0.097/2 - 0.00162  z = 0.0627/2 - 0.0324, from manual of mid70, see center point location page 15-->
+            <geometry>
+                <sphere radius="0.0088"/>
+            </geometry>
+        </visual>
+        <visual>
+            <material name="blue" />
+            <origin xyz="-0.025 0.0305 -0.0075"/> <!-- x = 0.097/2 - 0.00162  z = 0.0627/2 - 0.0324, from manual of mid70, see center point location page 15-->
+            <geometry>
+                <sphere radius="0.0088"/>
+            </geometry>
+        </visual>
+        <visual>
+            <material name="blue" />
+            <origin xyz="-0.025 -0.0305 -0.0075"/> <!-- x = 0.097/2 - 0.00162  z = 0.0627/2 - 0.0324, from manual of mid70, see center point location page 15-->
+            <geometry>
+                <sphere radius="0.0088"/>
+            </geometry>
+        </visual>
+    </link>
+    
+
     <joint name="mounting_plate_joint" type="fixed">
         <parent link="livox_frame"/>
-        <child link="mounting_plate" />
-        <origin xyz="-0.04275 0 0.0318"/>
+        <child link="mounting_plate_bottom" />
+        <origin xyz="-0.04275 0 0.0433"/>
     </joint>
+    
+    <!-- needs to be fitted -->
+    <!-- <link name="mounting_plate_with_dampening" >
+        <visual>
+            <origin xyz="0 0 0"/> 
+            <geometry>
+                <box size="0.0708 0.0596 0.003" />
+            </geometry>
+            <material name="light_brown" />
+        </visual>
+    </link> -->
+    
+    <!-- needs to be fitted -->
+    <!-- <joint name="mounting_plate_joint" type="fixed">
+        <parent link="livox_frame"/>
+        <child link="mounting_plate_with_dampening" />
+        <origin xyz="-0.04275 0 0.0318"/> 
+    </joint> -->
+    
+
+
+
+    <!-- <link name="lidar_odom" >
+
+    </link>
+    
+    <joint name="livox_frame_to_lidar_odom" type="fixed">
+        <parent link="livox_frame"/>
+        <child link="lidar_odom" />
+        <origin xyz="0 0 0"/>
+    </joint> -->
+
+
     
 
     <joint name="imu_joint" type="fixed">
-        <parent link="mounting_plate"/>
+        <parent link="mounting_plate_top"/>
         <child link="imu_base_link" />
-        <origin xyz="-0.0246 0.017 0.0015"/>
+        <origin xyz="-0.0246 0.017 0.0"/>
     </joint>
 
     
