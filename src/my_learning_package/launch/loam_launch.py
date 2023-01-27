@@ -40,12 +40,20 @@ def generate_launch_description():
         )])
     )
 
-    backend_node = Node(
-        package="my_learning_package",
-        name="backend",
-        executable="loam_backend",
+
+    backend_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([os.path.join(
+            get_package_share_directory(package_name),'launch','backend.launch.py'
+        )])
+    )
+    
+    ekf_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([os.path.join(
+            get_package_share_directory(package_name),'launch','ekf.launch.py'
+        )])
     )
 
+    # rsp -> robot state publisher
     rsp = IncludeLaunchDescription(
                 PythonLaunchDescriptionSource([os.path.join(
                     get_package_share_directory(package_name),'launch','rsp.launch.py'
@@ -113,8 +121,10 @@ def generate_launch_description():
 
 
     ld.add_action(preprocessing_launch)
-    ld.add_action(backend_node)
+    ld.add_action(backend_launch)
+    # ld.add_action(ekf_launch)
     ld.add_action(lidar_odometry_launch)
+
     ld.add_action(transform_node_global_map_lidar_odom)
     ld.add_action(transform_node_global_map_odom)
     ld.add_action(transform_base_link_footprint)

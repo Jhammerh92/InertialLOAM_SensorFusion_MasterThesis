@@ -1,6 +1,6 @@
 preprocessing:
   ros__parameters:
-    filter_close_points_distance_m: 0.1 # in meters
+    filter_close_points_distance_m: 1.0 # in meters
     use_gyroscopic_undistortion_: true
     pc_normal_search_radius: 0.0 # this is currently not used as it is not robust to variation in the cloud size which is apparent for pc from the livox lidar. large scale is 2.0, small scale is 0.2
     pc_normal_knn_points: 40 # This is currently used over search_radius

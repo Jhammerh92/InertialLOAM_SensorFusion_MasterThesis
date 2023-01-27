@@ -32,20 +32,26 @@ def generate_launch_description():
     )
 
 
-    imu_launch = GroupAction(
-        actions=[
-            SetRemap(src="/imu/data", dst="/imu/data_raw"), # ramap the out to something used by filter, remember to do this with RT imeplementation!
+    # imu_launch = GroupAction(
+    #     actions=[
+    #         SetRemap(src="/imu/data", dst="/imu/data_raw"), # ramap the out to something used by filter, remember to do this with RT imeplementation!
 
-            IncludeLaunchDescription( # IMU driver launch
-                        PythonLaunchDescriptionSource([os.path.join(
-                            get_package_share_directory('bluespace_ai_xsens_mti_driver'), 'launch', 'xsens_mti_node.launch.py')]),
-            ),
+    #         IncludeLaunchDescription( # IMU driver launch
+    #                     PythonLaunchDescriptionSource([os.path.join(
+    #                         get_package_share_directory('bluespace_ai_xsens_mti_driver'), 'launch', 'xsens_mti_node.launch.py')]),
+    #         ),
 
-            # lidar_driver_node = IncludeLaunchDescription(
-            #     launch_description_source='/home/slamnuc/ws_livox/src/livox_ros2_driver/launch/livox_lidar_launch.py',
-            #     # add launch arguments
-            # )
-        ]
+    #         # lidar_driver_node = IncludeLaunchDescription(
+    #         #     launch_description_source='/home/slamnuc/ws_livox/src/livox_ros2_driver/launch/livox_lidar_launch.py',
+    #         #     # add launch arguments
+    #         # )
+    #     ]
+    # )
+
+    imu_launch = IncludeLaunchDescription(
+                PythonLaunchDescriptionSource([os.path.join(
+                    get_package_share_directory(package_name),'launch','imu_run.launch.py'
+                )])
     )
     
     # bag_node = ExecuteProcess(

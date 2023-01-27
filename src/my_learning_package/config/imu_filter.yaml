@@ -1,0 +1,7 @@
+imu_filter:
+  ros__parameters:
+    imu_dt: 0.01
+    alpha: 0.5
+    beta: 0.1
+    imu_topic: "/imu/data_raw"
+    

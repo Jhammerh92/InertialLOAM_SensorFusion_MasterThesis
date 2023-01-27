@@ -1,0 +1,3 @@
+backend:
+  ros__parameters:
+    global_map_ds_leafsize: 0.05
