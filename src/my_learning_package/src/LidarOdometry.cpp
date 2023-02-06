@@ -20,6 +20,9 @@
 #include "tf2_geometry_msgs/tf2_geometry_msgs.h"
 #include "tf2_ros/transform_broadcaster.h"
 
+#include <tf2/LinearMath/Matrix3x3.h>
+#include <tf2/LinearMath/Quaternion.h>
+
 
 #include <pcl/common/common.h>
 #include <pcl/point_cloud.h>
@@ -195,6 +198,14 @@ class LidarOdometry : public rclcpp::Node
 
         std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
+        double translation_std_x;
+        double translation_std_y;
+        double translation_std_z;
+
+        double translation_std_min_x_;
+        double translation_std_min_y_;
+        double translation_std_min_z_;
+
 
         bool initial_pose_recieved;
 
@@ -219,10 +230,12 @@ class LidarOdometry : public rclcpp::Node
         int local_map_init_frames_count_;
 
         bool use_cloud_scale_for_ds_{};
-        bool use_fusion_with_imu_{};
+        bool use_wheel_constraint_{};
 
         double ds_lc_voxel_size_ratio_;
         double cloud_scale_previuos_cloud_weight_;
+
+        
 
         // publish topics as parameters so they can be changed?
 
@@ -269,14 +282,21 @@ class LidarOdometry : public rclcpp::Node
             declare_parameter("points_per_cloud_scale", 25); 
             get_parameter("points_per_cloud_scale", points_per_cloud_scale_);
 
-            declare_parameter("use_fusion_with_imu", false); 
-            get_parameter("use_fusion_with_imu", use_fusion_with_imu_);
+            declare_parameter("use_wheel_constraint", false); 
+            get_parameter("use_wheel_constraint", use_wheel_constraint_);
 
             declare_parameter("cloud_scale_previuos_cloud_weight", 0.5); 
             get_parameter("cloud_scale_previuos_cloud_weight", cloud_scale_previuos_cloud_weight_);
 
             declare_parameter("ds_lc_voxel_size_ratio", 3.0); 
             get_parameter("ds_lc_voxel_size_ratio", ds_lc_voxel_size_ratio_);
+
+            declare_parameter("translation_std_min_x", 0.01); 
+            get_parameter("translation_std_min_x", translation_std_min_x_);
+            declare_parameter("translation_std_min_y", 0.01); 
+            get_parameter("translation_std_min_y", translation_std_min_y_);
+            declare_parameter("translation_std_min_z", 0.01); 
+            get_parameter("translation_std_min_z", translation_std_min_z_);
 
             // RCLCPP_INFO(get_logger(), "ds_voxel_size in constructor is: %f", ds_voxel_size_);
 
@@ -403,7 +423,8 @@ class LidarOdometry : public rclcpp::Node
             //     rel_pose[i] = 0;
             // }
 
-            last_odometry_pose = initial_pose_matrix;
+            // last_odometry_pose = initial_pose_matrix;
+            last_odometry_pose = Eigen::Matrix4d::Identity();
 
             registration_transformation = Eigen::Matrix4d::Identity();
             last_odometry_transformation = Eigen::Matrix4d::Identity();
@@ -435,7 +456,7 @@ class LidarOdometry : public rclcpp::Node
         {   
             RCLCPP_INFO(get_logger(), "Initializing System..");
 
-
+            updateTransformationError();
             calcCloudScale();
             prev_cloud_scale = cloud_scale;
 
@@ -448,7 +469,7 @@ class LidarOdometry : public rclcpp::Node
             publishCurrentCloud();
 
             savePose();
-            savePointCloud();
+            // savePointCloud();
             publishOdometry();
             // publishGlobalCloud();
 
@@ -487,6 +508,7 @@ class LidarOdometry : public rclcpp::Node
             keyframe_index.push_back(latest_frame_idx); // the keyframe index to all frames
             publishKeyframeCloud();
 
+            savePointCloud();
             saveKeyframePose();
             publishKeyframeOdometry();
 
@@ -587,42 +609,29 @@ class LidarOdometry : public rclcpp::Node
         }
 
         void downSampleClouds() {
-            // down_size_filter_surf_map.setInputCloud(surf_from_map);
-            // down_size_filter_surf_map.filter(*surf_from_map_ds);
 
-            // if (use_cloud_scale_for_ds_ == true) {
-            //     calcCloudScale();
-            //     double prev_cloud_weight = 0.5;
-            //     double new_cloud_scale = prev_cloud_scale * prev_cloud_weight + cloud_scale * (1 - prev_cloud_weight); // calculate new scale as weighted average between old and new
-            //     RCLCPP_INFO(get_logger(), "cloud scale is: %f, prev: %f, new scale is: %f", cloud_scale, prev_cloud_scale, new_cloud_scale);
-            //     float temp_leafsize = new_cloud_scale / float(points_per_cloud_scale_); // 25 points from side to side by default
-            //     float temp_leafsize_lc = temp_leafsize / float(3); // best have as uneven number to have center point ?
-            //     down_size_filter.setLeafSize(temp_leafsize, temp_leafsize, temp_leafsize);
-            //     down_size_filter_local_map.setLeafSize(temp_leafsize_lc, temp_leafsize_lc, temp_leafsize_lc);
-            //     prev_cloud_scale = new_cloud_scale;
-            // }
 
             setCloudScale();
 
-            cloud_in_ds->clear();
+            // cloud_in_ds->clear();
 
             down_size_filter.setInputCloud(cloud_in);
             down_size_filter.filter(*cloud_in_ds);
             // farthestPointSampling(cloud_in, cloud_in_ds, 1000);
 
 
-            cloud_keyframe_ds->clear();
+            // cloud_keyframe_ds->clear();
             down_size_filter.setInputCloud(cloud_keyframe);
             down_size_filter.filter(*cloud_keyframe_ds);
         }
 
         void setCloudScale()
         {
+            calcCloudScale();
             if (use_cloud_scale_for_ds_ == true) {
-                calcCloudScale();
                 double prev_cloud_weight = cloud_scale_previuos_cloud_weight_;
                 double new_cloud_scale = prev_cloud_scale * prev_cloud_weight + cloud_scale * (1 - prev_cloud_weight); // calculate new scale as weighted average between old and new
-                RCLCPP_INFO(get_logger(), "cloud scale is: %f, prev: %f, new scale is: %f", cloud_scale, prev_cloud_scale, new_cloud_scale);
+                RCLCPP_DEBUG(get_logger(), "cloud scale is: %f, prev: %f, new scale is: %f", cloud_scale, prev_cloud_scale, new_cloud_scale);
                 float temp_leafsize = new_cloud_scale / float(points_per_cloud_scale_); // 25 points from side to side by default
                 float temp_leafsize_lc = temp_leafsize / float(ds_lc_voxel_size_ratio_); // best have as uneven number to have center point ?
                 down_size_filter.setLeafSize(temp_leafsize, temp_leafsize, temp_leafsize);
@@ -740,18 +749,15 @@ class LidarOdometry : public rclcpp::Node
 
 
 
+
         void regisrationICP(boost::shared_ptr<pcl::PointCloud<PointType>> source, const boost::shared_ptr<pcl::PointCloud<PointType>> target, bool use_initial_course)
         {
             typedef pcl::registration::TransformationEstimationPointToPlane<PointType, PointType> PointToPlane;
             // maybe not setup the icp on every use
             // pcl::IterativeClosestPoint<PointType, PointType> icp;
-            // pcl::GeneralizedIterativeClosestPoint<PointType, PointType> icp;
+         
             pcl::IterativeClosestPointWithNormals<PointType, PointType> icp;
-            // pcl::IterativeClosestPointNonLinear<PointType, PointType> icp;
-
-            // pcl::NormalDistributionsTransform<PointType, PointType> icp;
-            // icp.setResolution(1.0);
-
+            
             boost::shared_ptr<PointToPlane> p2pl(new PointToPlane);
             icp.setTransformationEstimation(p2pl);
 
@@ -759,10 +765,12 @@ class LidarOdometry : public rclcpp::Node
 
             icp.setUseSymmetricObjective(true);
             icp.setEnforceSameDirectionNormals(true);
+            
+            // RCLCPP_INFO(get_logger(),"source size %i target size %i", source->points.size(), target->points.size());
 
             icp.setInputSource(source);
             icp.setInputTarget(target);
-            icp.setEuclideanFitnessEpsilon(1e-3);
+            icp.setEuclideanFitnessEpsilon(1e-4);
             icp.setRANSACIterations(10);
             icp.setRANSACOutlierRejectionThreshold(1.5);
 
@@ -772,11 +780,12 @@ class LidarOdometry : public rclcpp::Node
             if (use_initial_course) {
 
                 // course estimation first to get a better initial estimate of transformation
-                icp.setMaxCorrespondenceDistance(50*max_correspondance_distance);
+                icp.setMaxCorrespondenceDistance(10*max_correspondance_distance);
                 icp.setMaximumIterations(15);
                 icp.setTransformationEpsilon(1e-1);
 
                 icp.align(*aligned_cloud, init_guess);
+                // RCLCPP_INFO(get_logger(),"Where's the poop Robin?");
 
                 //get icp transformation 
                 init_guess = icp.getFinalTransformation();//.cast<double>(); // why cast to double??
@@ -802,11 +811,14 @@ class LidarOdometry : public rclcpp::Node
 
             icp_fitness = icp.getFitnessScore();
             
-            RCLCPP_INFO(get_logger(), "ICP has converged: %i,  score: %f", icp.hasConverged(), icp_fitness);
+            RCLCPP_DEBUG(get_logger(), "ICP has converged: %i,  score: %f", icp.hasConverged(), icp_fitness);
 
 
             return;
         }
+
+
+
 
         void regisrationICP_gcip(boost::shared_ptr<pcl::PointCloud<PointType>> source, const boost::shared_ptr<pcl::PointCloud<PointType>> target)
         {
@@ -865,16 +877,108 @@ class LidarOdometry : public rclcpp::Node
             return;
         }
 
+        // Eigen::Matrix4d wheelConstrainTransformation(Eigen::Matrix4d input_transformation)
+        // {
+        //     // attempts to remove any "sliding" in y, by assuming movement is in an circle arc
 
+        //     Eigen::Matrix3d rotation_mat_pose = last_odometry_pose.block<3,3>(0,0);
+        //     Eigen::Matrix3d rotation_mat_transform = input_transformation.block<3,3>(0,0);
+        //     Eigen::Vector3d translation(input_transformation.block<3,1>(0,3));
+        //     double transformation_distance = translation.norm();
+
+
+        //     Eigen::Quaterniond quat_transform_eigen(rotation_mat_transform);
+        //     tf2::Quaternion quat_transform_tf(quat_transform_eigen.x(),
+        //                                         quat_transform_eigen.y(),
+        //                                         quat_transform_eigen.z(),
+        //                                         quat_transform_eigen.w());
+        //     tf2::Matrix3x3 rotation_mat_transform_tf(quat_transform_tf);
+        //     double r, p, y;
+        //     rotation_mat_transform_tf.getEulerYPR(y,p,r);
+        //     RCLCPP_INFO(get_logger(), "\nRoll, Pitch, Yaw  of transform: %f %f %f", r*57.3, p*57.3, y*57.3);
+
+        //     RCLCPP_INFO(get_logger(), "translation: %f %f %f", translation[0], translation[1] , translation[2]);
+        //     RCLCPP_INFO(get_logger(), "norm of translation: %f", transformation_distance);
+
+        //     // Eigen::Vector3d translation_prime = rotation_mat_pose.inverse() * translation;  // the translation in the the moving frame of the odometry
+        //     Eigen::Vector3d translation_prime = translation;  // the translation in the the moving frame of the odometry
+        //     RCLCPP_INFO(get_logger(), "translation prime: %f %f %f", translation_prime[0], translation_prime[1] , translation_prime[2]);
+
+        //     double yaw_radius = transformation_distance / (abs(sin(y)) + 1e-8);
+        //     RCLCPP_INFO(get_logger(), "Yaw radius: %f", yaw_radius);
+        //     double y_translation_max = yaw_radius * (1 - cos(asin(translation_prime[0]/yaw_radius)));
+
+        //     RCLCPP_INFO(get_logger(), "max y: %f", y_translation_max);
+        //     RCLCPP_INFO(get_logger(), "transform y: %f", translation_prime[1]);
+
+
+        //     // if (y*57.3 < 0.2) {
+        //         // return input_transformation;
+        //     // }
+
+        //     // if (abs(translation_prime[1]) > y_translation_max)  // maybe add scaling coefficient?
+        //     // {
+        //         // int sign = abs(translation_prime[1]) / translation_prime[1];
+        //         // translation_prime[1] =  sign *y_translation_max;
+        //         translation_prime[1] *=  0.2;
+        //     // }
+
+        //     // translation = rotation_mat_pose * translation_prime;
+        //     translation = translation_prime;
+            
+        //     RCLCPP_INFO(get_logger(), "final translation: %f %f %f", translation[0], translation[1] , translation[2]);
+
+        //     Eigen::Matrix4d constrained_transformation(input_transformation);
+        //     constrained_transformation.block<3,1>(0,3) = translation;
+
+        //     return constrained_transformation;
+        // }
+        void updateTransformationError()
+        {
+            // make transform matrix into quaternion and vector
+            // Eigen::Quaterniond quarternion_pose(last_odometry_pose.block<3, 3>(0, 0)); 
+            // Eigen::Matrix3d rot_mat(last_odometry_transformation.block<3, 3>(0, 0)); 
+            Eigen::Vector3d translation(last_odometry_transformation.block<3, 1>(0, 3));
+
+            // translation = rot_mat * translation;
+            RCLCPP_INFO(get_logger(), "translation %f %f %f", translation[0], translation[1], translation[2]);
+
+            translation_std_x = ( abs(translation[0]) *0.5)  + translation_std_min_x_;
+            translation_std_y = ( abs(translation[1]) *0.5)  + translation_std_min_y_;
+            translation_std_z = ( abs(translation[2]) *0.5)  + translation_std_min_z_;
+
+            max(translation_std_x, translation_std_min_x_);
+            max(translation_std_y, translation_std_min_y_);
+            max(translation_std_z, translation_std_min_z_);
+            // length of translation
+            // double distance = translation.norm();
+
+            // angle of rotation
+            // 0.1 rad is approx 57.3 deg
+            // Eigen::AngleAxisd angleAxis = Eigen::AngleAxisd(quarternion);
+            // double angle = angleAxis.angle()*180.0/M_PI;
+        }
 
         void updateOdometryPose()
         {   
             Eigen::Matrix4d next_odometry_pose = keyframe_poses.back() * registration_transformation; // the next evaluted odometry pose, not neccesarily a keyframe
-            last_odometry_transformation =  last_odometry_pose * next_odometry_pose.inverse(); // transformation between 2 consecutive odometry poses
-            // last_odometry_transformation =  last_odometry_pose * next_odometry_pose; // transformation between 2 consecutive odometry poses
+            // last_odometry_transformation =  next_odometry_pose * last_odometry_pose.inverse(); // transformation between 2 consecutive odometry poses
+            last_odometry_transformation = (last_odometry_pose.inverse() * next_odometry_pose).inverse() ; // transformation between 2 consecutive odometry poses
+            
+            updateTransformationError();
+
+            // if (use_wheel_constraint_ ){
+            //     // make wheel constraint here on last last_odometry_transformation moving from last_odometry_pose
+            //     Eigen::Matrix4d constrained_odometry_transformation = wheelConstrainTransformation(last_odometry_transformation);
+            //     next_odometry_pose =  last_odometry_pose * constrained_odometry_transformation;
+            //     // registration_transformation =  next_odometry_pose * keyframe_poses.back().inverse();
+            //     registration_transformation =  keyframe_poses.back().inverse() * next_odometry_pose;
+            // }
+            
             // odometry_transformation_guess = registration_transformation * last_odometry_transformation; // prediction of the next transformation using the previuosly found transformation - used for ICP initial guess
-            odometry_transformation_guess = Eigen::Matrix4d::Identity();
-            // odometry_transformation_guess = registration_transformation;
+            // odometry_transformation_guess = Eigen::Matrix4d::Identity();
+            odometry_transformation_guess = registration_transformation;
+
             last_odometry_pose = next_odometry_pose;
 
         }
@@ -1016,12 +1120,12 @@ class LidarOdometry : public rclcpp::Node
             pcl::PointCloud<PointType>::Ptr transformed_cloud = boost::make_shared<pcl::PointCloud<PointType>>();
             if (recent_frames.size() < max_frames ) {
                 
-                RCLCPP_INFO(get_logger(), "Less than limit (%i) frames in local map, size: %i, odomsize: %i, index:%i", local_map_width_ ,recent_frames.size(),i, latest_frame_idx);
+                // RCLCPP_INFO(get_logger(), "Less than limit (%i) frames in local map, size: %i, odomsize: %i, index:%i", local_map_width_ ,recent_frames.size(),i, latest_frame_idx);
                 pcl::transformPointCloudWithNormals<PointType>(*all_clouds[i], *transformed_cloud, keyframe_poses[i]);
                 recent_frames.push_back(transformed_cloud);
             } 
             else {
-                RCLCPP_INFO(get_logger(), "More than limit (%i) frames in local map, size:%i  index:%i", local_map_width_, recent_frames.size(), latest_frame_idx);
+                // RCLCPP_INFO(get_logger(), "More than limit (%i) frames in local map, size:%i  index:%i", local_map_width_, recent_frames.size(), latest_frame_idx);
                 // if (latest_frame_idx != odometry_pose_info->points.size() - 1) {
 
                 recent_frames.pop_front();
@@ -1050,7 +1154,7 @@ class LidarOdometry : public rclcpp::Node
             }
 
             // try and downsample each keyframe in the local map instead of 
-            local_map_ds->clear();
+            // local_map_ds->clear();
             down_size_filter_local_map.setInputCloud(local_map);
             down_size_filter_local_map.filter(*local_map_ds);
 
@@ -1067,7 +1171,7 @@ class LidarOdometry : public rclcpp::Node
             RCLCPP_INFO(get_logger(), "Local map published!");
             // global_cloud->clear();
 
-            // transform the local map back to "origo" for it to be matchable with the most recent cloud
+            // transform the local map back to latest keyframe/"origo" for it to be matchable with the most recent cloud
             Eigen::Matrix4d inverse_keyframe_pose = keyframe_poses[keyframe_poses.size() - 1].inverse();
             pcl::transformPointCloudWithNormals<PointType>(*local_map_ds, *local_map_ds, inverse_keyframe_pose );
 
@@ -1138,6 +1242,54 @@ class LidarOdometry : public rclcpp::Node
 
         // }
 
+        void rotateCovMatrix(Eigen::MatrixXd &cov_mat, Eigen::Matrix3d rot_mat)
+        {
+            Eigen::MatrixXd R(6,6);
+            R.fill(0.0);
+            R.block<3,3>(0,0) = rot_mat;
+            R.block<3,3>(3,3) = rot_mat;
+
+            // cov_mat = R.transpose() * cov_mat * R;
+            cov_mat = R * cov_mat * R.transpose();
+            // cov_mat.block<3,3>(0,0) = rot_mat.transpose() * cov_mat.block<3,3>(0,0) * rot_mat;
+            // cov_mat.block<3,3>(3,3) = rot_mat * cov_mat.block<3,3>(3,3) * rot_mat.transpose();
+
+            // for (int i =0; i<36; i++){
+            //     if (cov_mat(i) < 1e-8){
+            //         cov_mat(i) = 0.0;
+            //     }
+            // }
+        }
+
+        Eigen::MatrixXd createCovarianceEigen(vector<double> cov_diag)
+        {
+            Eigen::MatrixXd cov_mat(6,6);
+            cov_mat.fill(0.0);
+            for (int i=0 ; i < 6; i++){
+                cov_mat(i*6 + i) = cov_diag[i];
+            }
+
+            return cov_mat;
+        }
+
+        void setCovariance(array<double, 36> &cov, vector<double> cov_diag)
+        // assumes a 6x6 covariance array ie. size 36
+        {
+            for (int i=0 ; i < 6; i++){
+                cov[i*6 + i] = cov_diag[i];
+            }
+
+        }
+
+        void setCovariance(array<double, 36> &cov, Eigen::MatrixXd cov_mat)
+        // assumes a 6x6 covariance array ie. size 36
+        {
+            for (int i=0 ; i < 36; i++){
+                cov[i] = cov_mat(i);
+            }
+
+        }
+
         void publishOdometry()
         {
             // PoseInfo latestPoseInfo = odometry_pose_info->points[latest_keyframe_idx - 1];
@@ -1150,6 +1302,18 @@ class LidarOdometry : public rclcpp::Node
             odom.pose.pose.position.x = latestPoseInfo.x;
             odom.pose.pose.position.y = latestPoseInfo.y;
             odom.pose.pose.position.z = latestPoseInfo.z;
+
+            vector<double> cov_diag{translation_std_x*translation_std_x, translation_std_y* translation_std_y, translation_std_z * translation_std_z, 0.0,0.0,0.0};
+            Eigen::MatrixXd cov_mat = createCovarianceEigen(cov_diag);
+            Eigen::Matrix3d rot_mat = last_odometry_pose.block<3,3>(0,0);
+            // Eigen::Matrix3d rot_mat(latestPoseInfo.qx,
+            //                         latestPoseInfo.qy,
+            //                         latestPoseInfo.qz,
+            //                         latestPoseInfo.qw);
+            rotateCovMatrix(cov_mat, rot_mat);
+
+            setCovariance(odom.pose.covariance, cov_mat);
+
             // odom.twist.twist.linear.x // add the velocities in twist
             odometry_pub->publish(odom);
 
@@ -1182,6 +1346,9 @@ class LidarOdometry : public rclcpp::Node
             path_pub->publish(path);
         }
 
+
+       
+
         void publishKeyframeOdometry()
         {
             // PoseInfo latestPoseInfo = odometry_pose_info->points[latest_keyframe_idx - 1];
@@ -1194,7 +1361,11 @@ class LidarOdometry : public rclcpp::Node
             odom.pose.pose.position.x = latestPoseInfo.x;
             odom.pose.pose.position.y = latestPoseInfo.y;
             odom.pose.pose.position.z = latestPoseInfo.z;
+
+            
+
             // odom.twist.twist.linear.x // add the velocities in twist
+
             keyframe_odometry_pub->publish(odom);
 
 
@@ -1257,7 +1428,6 @@ class LidarOdometry : public rclcpp::Node
             if (cloud_queue.size() <= 0) { 
                 return false; 
             } else {
-                RCLCPP_INFO(get_logger(), "Buffer size is: %i", cloud_queue.size());
                 current_cloud_msg = cloud_queue.front(); // puts the next cloud to variable current
                 cloud_queue.pop_front(); // removes element from the queue
 
@@ -1268,6 +1438,9 @@ class LidarOdometry : public rclcpp::Node
                 // time_scan_next = current_cloud_msg.header.stamp; // why take time from the next? and should it be double?
                 time_new_cloud = current_cloud_msg.header.stamp;
 
+                if (cloud_queue.size() > 0) {
+                    RCLCPP_INFO(get_logger(), "Buffer size is: %i", cloud_queue.size());
+                }
             } 
 
             // cloud_header = pcl_msg->header;
@@ -1281,6 +1454,7 @@ class LidarOdometry : public rclcpp::Node
                 return;
             }
             downSampleClouds();
+            
             
 
             if (!system_initialized){
@@ -1297,11 +1471,11 @@ class LidarOdometry : public rclcpp::Node
             if (local_map_init_frames_count_ > 0 && !init_map_built){
                 if (keyframe_poses.size() <= size_t(local_map_init_frames_count_)) {
                     RCLCPP_INFO(get_logger(), "Adding frame to initial local map by assuming no movement! ");
+                    savePose();
+                    
                     publishCurrentCloud();
                     pushKeyframe();
                     
-                    savePose();
-                    savePointCloud();
                     publishOdometry(); 
                     buildLocalMapAroundKeyFrame();
                     return;
@@ -1317,29 +1491,34 @@ class LidarOdometry : public rclcpp::Node
 
             }
 
-            RCLCPP_INFO(get_logger(), "This is from RUN: frame_id: %s,  time of PCL: %f, num points: %i", cloud_header.frame_id.c_str(), time_new_cloud.nanoseconds()/1e9, cloud_in_ds->points.size());
+            // RCLCPP_INFO(get_logger(), "This is from RUN: frame_id: %s,  time of PCL: %f, num points: %i", cloud_header.frame_id.c_str(), time_new_cloud.nanoseconds()/1e9, cloud_in_ds->points.size());
             
-            // buildLocalMap();
+             
+            
 
             // do icp with last key frame or rather local map
             // regisrationICP(cloud_in_ds, cloud_keyframe_ds); // source, target - such that t = s*T, where T is the transformation. If source is the new frame the transformation found is the inverse of the odometry transformation 
             regisrationICP(cloud_in_ds, local_map_ds, true); // source, target - such that t = s*T, where T is the transformation. If source is the new frame the transformation found is the inverse of the odometry transformation 
+            // RCLCPP_INFO(get_logger(), "did ICP happen?!...");
+            
+            // TODO: make check for degenerate estimated transformation 
+
             // regisrationICP_gcip(cloud_in_ds, local_map_ds);
 
-            updateOdometryPose(); // this should also be handled in backend
-            // publishTransformation(); // punlishes the odometry transformation
+            updateOdometryPose(); 
+            savePose(); 
+            // publishTransformation(); // publishes the odometry transformation
 
             // send found transform to backend / kalman filter later
-
-
             publishCurrentCloud();
-            savePose(); 
+
+            // savePointCloud(); // testing this here
             publishOdometry(); 
 
             if (newKeyframeRequired() == true) {
                 pushKeyframe();
                 
-                savePointCloud();
+                // savePointCloud();
 
                 buildLocalMapAroundKeyFrame();
 

@@ -185,17 +185,17 @@ class IMUFilter : public rclcpp::Node
             declare_parameter("beta", 0.1);
             get_parameter("beta", beta_);
 
-            declare_parameter("imu_step_delay", 0);
-            get_parameter("imu_step_delay", imu_step_delay_);
+            // declare_parameter("imu_step_delay", 0);
+            // get_parameter("imu_step_delay", imu_step_delay_);
 
-            declare_parameter("init_calib_steps", 0);
-            get_parameter("init_calib_steps", init_calib_steps_);
+            // declare_parameter("init_calib_steps", 0);
+            // get_parameter("init_calib_steps", init_calib_steps_);
             
             declare_parameter("imu_topic", "/imu/data_raw");
             get_parameter("imu_topic", imu_topic_);
 
-            declare_parameter("print_states", true);
-            get_parameter("print_states", print_states_);
+            // declare_parameter("print_states", true);
+            // get_parameter("print_states", print_states_);
 
             RCLCPP_INFO(get_logger(),"alpha set to %f", alpha_);
             RCLCPP_INFO(get_logger(),"beta set to %f", beta_);
@@ -283,6 +283,7 @@ class IMUFilter : public rclcpp::Node
         
         void imuDataHandler(const sensor_msgs::msg::Imu::SharedPtr imu_data)
         {
+            RCLCPP_INFO_ONCE(get_logger(), "First imu msg recieved..");
             step++;
             // put data into buffer back
             imu_delay_buffer.push_back(imu_data);
@@ -422,27 +423,27 @@ class IMUFilter : public rclcpp::Node
 
         // }
 
-        void printStates()
-        {   
-            if (print_states_) {
+        // void printStates()
+        // {   
+        //     if (print_states_) {
 
-                // if init_calib_steps > 0
-                RCLCPP_INFO(get_logger(), "test..");
-                // RCLCPP_INFO(get_logger(), "Static Calibration: gravity estimate: %f m/s², std: %f m/s², measurement std: %f, update gain: %f", g_acc, sqrt(g_acc_var), sqrt(g_acc_var_measurement), k_gain);
-                // RCLCPP_INFO(get_logger(), "Static Calibration: gravity norm vector: %f %f %f", g_vec[0], g_vec[1], g_vec[2] );
-                // RCLCPP_INFO(get_logger(), "Static Calibration: pitch: %f deg, roll: %f deg", init_calib_pitch *57.3, init_calib_roll*57.3 );
+        //         // if init_calib_steps > 0
+        //         RCLCPP_INFO(get_logger(), "test..");
+        //         // RCLCPP_INFO(get_logger(), "Static Calibration: gravity estimate: %f m/s², std: %f m/s², measurement std: %f, update gain: %f", g_acc, sqrt(g_acc_var), sqrt(g_acc_var_measurement), k_gain);
+        //         // RCLCPP_INFO(get_logger(), "Static Calibration: gravity norm vector: %f %f %f", g_vec[0], g_vec[1], g_vec[2] );
+        //         // RCLCPP_INFO(get_logger(), "Static Calibration: pitch: %f deg, roll: %f deg", init_calib_pitch *57.3, init_calib_roll*57.3 );
 
-                // RCLCPP_INFO(get_logger(), "Lidar measurement: ori = %f, %f, %f", roll, pitch, yaw);
-                // // RCLCPP_INFO(get_logger(), "Lidar measurement: pos = %f, %f, %f",odom_message->pose.pose.position.x, odom_message->pose.pose.position.y, odom_message->pose.pose.position.z);
-                // RCLCPP_INFO(get_logger(), "Lidar measurement: pos state = %f, %f, %f, vel = %f, %f, %f, bias = %f, %f, %f, gain = %f, %f, %f", state_x[0], state_y[0], state_z[0], state_x[1], state_y[1], state_z[1], state_x[2], state_y[2], state_z[2], gain_x[0], gain_y[0], gain_z[0]);
-                // RCLCPP_INFO(get_logger(), "lidar measurement: pos uncertainty = %f, %f, %f", uncertainty_x(0,0), uncertainty_y(0,0), uncertainty_z(0,0));
+        //         // RCLCPP_INFO(get_logger(), "Lidar measurement: ori = %f, %f, %f", roll, pitch, yaw);
+        //         // // RCLCPP_INFO(get_logger(), "Lidar measurement: pos = %f, %f, %f",odom_message->pose.pose.position.x, odom_message->pose.pose.position.y, odom_message->pose.pose.position.z);
+        //         // RCLCPP_INFO(get_logger(), "Lidar measurement: pos state = %f, %f, %f, vel = %f, %f, %f, bias = %f, %f, %f, gain = %f, %f, %f", state_x[0], state_y[0], state_z[0], state_x[1], state_y[1], state_z[1], state_x[2], state_y[2], state_z[2], gain_x[0], gain_y[0], gain_z[0]);
+        //         // RCLCPP_INFO(get_logger(), "lidar measurement: pos uncertainty = %f, %f, %f", uncertainty_x(0,0), uncertainty_y(0,0), uncertainty_z(0,0));
 
-                // RCLCPP_INFO(get_logger(), "update: pos state = %f, %f, %f, vel = %f, %f, %f, bias = %f %f %f", state_x[0], state_y[0], state_z[0], state_x[1], state_y[1], state_z[1], state_x[2], state_y[2], state_z[2]);
-                // RCLCPP_INFO(get_logger(), "update: pos uncertainty = %f, %f, %f", uncertainty_x(0,0), uncertainty_y(0,0), uncertainty_z(0,0));
-                // RCLCPP_INFO(get_logger(), "update: ori state = %f, %f, %f, bias = %f %f %f", state_roll[0], state_pitch[0], state_yaw[0], state_roll[1], state_pitch[1], state_yaw[1]);
-                // RCLCPP_INFO(get_logger(), "update: ori uncertainty = %f, %f, %f", uncertainty_roll(0,0), uncertainty_pitch(0,0), uncertainty_yaw(0,0));
-            }
-        }
+        //         // RCLCPP_INFO(get_logger(), "update: pos state = %f, %f, %f, vel = %f, %f, %f, bias = %f %f %f", state_x[0], state_y[0], state_z[0], state_x[1], state_y[1], state_z[1], state_x[2], state_y[2], state_z[2]);
+        //         // RCLCPP_INFO(get_logger(), "update: pos uncertainty = %f, %f, %f", uncertainty_x(0,0), uncertainty_y(0,0), uncertainty_z(0,0));
+        //         // RCLCPP_INFO(get_logger(), "update: ori state = %f, %f, %f, bias = %f %f %f", state_roll[0], state_pitch[0], state_yaw[0], state_roll[1], state_pitch[1], state_yaw[1]);
+        //         // RCLCPP_INFO(get_logger(), "update: ori uncertainty = %f, %f, %f", uncertainty_roll(0,0), uncertainty_pitch(0,0), uncertainty_yaw(0,0));
+        //     }
+        // }
 
 
 

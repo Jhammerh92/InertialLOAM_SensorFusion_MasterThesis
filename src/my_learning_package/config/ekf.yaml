@@ -1,23 +1,23 @@
 ekf:
   ros__parameters:
-    imu_dt: 0.01 # TODO rewrite to also use timestamp dt when this value os 0.0
-    imu_step_delay: 0 # 125
+    imu_dt: 0.01 # TODO rewrite to also use timestamp dt when this value is 0.0
+    imu_step_delay: 10 # 125
 
     # process noise std
-    process_noise_roll: 0.05
-    process_noise_pitch: 0.05
-    process_noise_yaw: 0.05
+    process_noise_roll: 0.005
+    process_noise_pitch: 0.005
+    process_noise_yaw: 0.005
 
-    process_noise_pos: 0.033
+    process_noise_pos: 0.15 # 0.033
     # process_noise_x: 0.001
     # process_noise_y: 0.001
     # process_noise_z: 0.001
 
     # measurement noise std
     # measurement_noise_ori: 0.00001
-    measurement_noise_roll:  0.001
-    measurement_noise_pitch: 0.001
-    measurement_noise_yaw:   0.001
+    measurement_noise_roll:  0.01
+    measurement_noise_pitch: 0.01
+    measurement_noise_yaw:   0.01
 
     measurement_noise_pos: 0.05
     # measurement_noise_x: 0.00001

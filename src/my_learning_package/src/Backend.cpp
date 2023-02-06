@@ -115,6 +115,8 @@ class Backend : public rclcpp::Node
         bool new_pose_ready;
 
         double global_map_ds_leafsize_;
+        double global_map_update_rate_;
+        std::string odometry_topic_;
     
     
     public:
@@ -122,7 +124,13 @@ class Backend : public rclcpp::Node
         : Node("mapping_backend")
         {   
             declare_parameter("global_map_ds_leafsize", 0.01);
-            get_parameter("global_map_ds_leafsize", global_map_ds_leafsize_);    
+            get_parameter("global_map_ds_leafsize", global_map_ds_leafsize_);
+
+            declare_parameter("global_map_update_rate", 5.0);
+            get_parameter("global_map_update_rate", global_map_update_rate_);    
+
+            declare_parameter("odometry_topic", "/odom_keyframe");
+            get_parameter("odometry_topic", odometry_topic_);    
 
 
             allocateMemory();
@@ -139,9 +147,9 @@ class Backend : public rclcpp::Node
             options2.callback_group = sub2_cb_group_;
 
 
-            // full_cloud_sub = this->create_subscription<sensor_msgs::msg::PointCloud2>("/full_point_cloud_keyframe", 100, std::bind(&Backend::pointCloudHandler, this, _1), options1);
-            full_cloud_sub = this->create_subscription<sensor_msgs::msg::PointCloud2>("/preprocessed_point_cloud", 100, std::bind(&Backend::pointCloudHandler, this, _1), options1);
-            odom_sub = this->create_subscription<nav_msgs::msg::Odometry>("/odom_kalman", 100, std::bind(&Backend::odometryHandler, this, _1), options2);
+            full_cloud_sub = this->create_subscription<sensor_msgs::msg::PointCloud2>("/full_point_cloud_keyframe", 100, std::bind(&Backend::pointCloudHandler, this, _1), options1);
+            // full_cloud_sub = this->create_subscription<sensor_msgs::msg::PointCloud2>("/preprocessed_point_cloud", 100, std::bind(&Backend::pointCloudHandler, this, _1), options1);
+            odom_sub = this->create_subscription<nav_msgs::msg::Odometry>(odometry_topic_, 100, std::bind(&Backend::odometryHandler, this, _1), options2);
             // path_sub = this->create_subscription<nav_msgs::msg::Path>("/path", 100, std::bind(&Backend::pathHandler, this, _1));
 
             // transformation_sub = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>("/transformation/lidar", 100, std::bind(&Backend::transformationHandler, this, _1));

@@ -645,27 +645,27 @@ public:
 
 
 
-        // imu_stuff..
-        int tmp_idx = 0;
-        if(idx_imu > 0) 
-            tmp_idx = idx_imu - 1; // to not get bad indexing outside array?
-        if (imu_buffer.empty()) // if no imu data or time is ahead of lidar?
-        {
-            // ROS_WARN("Waiting for IMU data ...");
-            RCLCPP_INFO(get_logger(), "Waiting for IMU data..");
-            return; // skips the lidar scan
-        } else if (toSec(imu_buffer[tmp_idx]->header.stamp) > time_scan_next)
-        {
-            RCLCPP_INFO(get_logger(), "IMU data is ahead..");
-            return;
-        }
+        if (use_gyroscopic_undistortion_){
+            // imu_stuff..
+            int tmp_idx = 0;
+            if(idx_imu > 0) 
+                tmp_idx = idx_imu - 1; // to not get bad indexing outside array?
+            if (imu_buffer.empty()) // if no imu data or time is ahead of lidar?
+            {
+                // ROS_WARN("Waiting for IMU data ...");
+                RCLCPP_INFO(get_logger(), "Waiting for IMU data..");
+                return; // skips the lidar scan
+            } else if (toSec(imu_buffer[tmp_idx]->header.stamp) > time_scan_next)
+            {
+                RCLCPP_INFO(get_logger(), "IMU data is ahead..");
+                return;
+            }
         
         // pcl::removeNaNFromPointCloud(*lidar_cloud_in, *lidar_cloud_in, indices);
 
 
         // UNDISTORTION SHOULD BE THE FIRST PROCESSING STEP
         // undistort_cloud(...)  put it here
-        if (use_gyroscopic_undistortion_){
             // if(imu_buffer.size() > 0) // this was just checked above
             processIMU(time_scan_next);
             RCLCPP_DEBUG(get_logger(), "IMU qauternion: w: %f, x: %f, y: %f, z: %f", q_iMU.w(), q_iMU.x(), q_iMU.y(), q_iMU.z());
@@ -680,7 +680,7 @@ public:
         }
 
         // ESSENTIAL PREPROCESSING
-        removeClosedPointCloud(*lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals, 0.05); // removes invalid points within a distance of x m from the center of the lidar
+        removeClosedPointCloud(*lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals, filter_close_points_distance_m_); // removes invalid points within a distance of x m from the center of the lidar
         removeStatisticalOutliers(lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals);
         pcl::copyPointCloud(*lidar_cloud_in_no_normals, *lidar_cloud_in); // change pointtype to point with normal data
         calculatePointNormals(lidar_cloud_in, *lidar_cloud_in); // openMP multi-processing accelerated

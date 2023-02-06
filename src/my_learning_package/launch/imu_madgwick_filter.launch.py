@@ -17,7 +17,11 @@ def generate_launch_description():
         package=package_name,
         name="imu_madgwick_filter",
         executable="imu_filter_madgwick_node",
-        parameters=[os.path.join(config_dir, 'imu_filter_odom.yaml'),{"use_mag" : True}],
+        parameters=[os.path.join(config_dir, 'imu_filter_odom.yaml'),
+                                    {"use_mag" : False,
+                                     "gain": 0.1,
+                                     "remove_gravity_vector": True,
+                                     "constant_dt": 0.01 }],
         # arguments=['-p','use_mag:=false'],
         remappings=[('/imu/data_raw','/imu/data_filter')],
         
