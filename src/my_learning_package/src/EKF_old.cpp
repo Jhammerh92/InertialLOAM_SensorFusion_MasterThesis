@@ -74,13 +74,15 @@ class EKF : public rclcpp::Node
         rclcpp::TimerBase::SharedPtr run_timer;
 
         
+
+
         rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub;
         rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub;
         rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr keyframe_odom_sub;
-        rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr lidar_odometry_transformation_sub;
 
         rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odometry_pub;
         rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub;
+
         rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr initial_pose_pub;
      
       
@@ -98,110 +100,79 @@ class EKF : public rclcpp::Node
 
         int step{};
         int step_since_keyframe{};
+        int init_calib_steps_;
 
-        // Eigen::MatrixXd Eye9;
-        Eigen::Matrix3d Eye3;
-
-        // ORIENTATION
 
         // state of orientation, x with bias on orientation, [alpha, q_b]
         Eigen::Vector2d state_pitch;  
         Eigen::Vector2d state_yaw; 
         Eigen::Vector2d state_roll; 
 
+        // state of position, [S, v, a_b]
+        Eigen::Vector3d state_x; 
+        Eigen::Vector3d state_y; 
+        Eigen::Vector3d state_z; 
+
+        
         // uncertainty / covariance matrix, P  -> check in docs for xsens imu if these are not equal on all axes
         Eigen::Matrix2d uncertainty_pitch;  
         Eigen::Matrix2d uncertainty_yaw;  
         Eigen::Matrix2d uncertainty_roll; 
         // Eigen::Matrix2d uncertainty_ori; 
 
+        Eigen::Matrix3d uncertainty_x; 
+        Eigen::Matrix3d uncertainty_y; 
+        Eigen::Matrix3d uncertainty_z; 
+
         // process noise matrix, Q -> check in docs for xsens imu if these are not equal on all axes
         Eigen::Matrix2d noise_pitch; 
         Eigen::Matrix2d noise_yaw;  
         Eigen::Matrix2d noise_roll; 
+
+        Eigen::Matrix3d noise_pos; 
 
         // prediction matrix, A aka F
         Eigen::Matrix2d A_ori;
         Eigen::Matrix2d A_ori_T;
         // bias matrix, B
         Eigen::Vector2d B_ori;
-
         // measurement matrix H
         Eigen::RowVector2d H_ori;
         Eigen::Vector2d H_ori_T;
 
-        // Kalman gain
+        // prediction matrix, A aka F
+        Eigen::Matrix3d A_pos;
+        Eigen::Matrix3d A_pos_T;
+        // bias matrix, B
+        Eigen::Vector3d B_pos;
+        // measurement matrix H
+        Eigen::RowVector3d H_pos;
+        Eigen::Vector3d H_pos_T;
+
+        //kalman gain matrix, K
         Eigen::Vector2d gain_pitch;
         Eigen::Vector2d gain_yaw;
         Eigen::Vector2d gain_roll;
 
+        Eigen::Vector3d gain_x;
+        Eigen::Vector3d gain_y;
+        Eigen::Vector3d gain_z;
+
+
+
         // measurement noise, R
+        double measurement_noise_roll_; 
+        double measurement_noise_pitch_; 
+        double measurement_noise_yaw_; 
         Eigen::VectorXd measurement_noise_pitch;
         Eigen::VectorXd measurement_noise_yaw;
         Eigen::VectorXd measurement_noise_roll;
 
+        double measurement_noise_pos_; 
+        Eigen::VectorXd measurement_noise_x;
+        Eigen::VectorXd measurement_noise_y;
+        Eigen::VectorXd measurement_noise_z;
 
-
-        // POSITION
-
-        // state of position, [S, v, a_b]
-        Eigen::Vector3d state_x; 
-        Eigen::Vector3d state_y; 
-        Eigen::Vector3d state_z; 
-        // Eigen::VectorXd state_pos; // should be 3 parts, [S, v, a_b], for each axis , total -> 9 parts
-
-        Eigen::Matrix3d uncertainty_x; 
-        Eigen::Matrix3d uncertainty_y; 
-        Eigen::Matrix3d uncertainty_z; 
-        // Eigen::MatrixXd uncertainty_pos; // 9x9 matrix, also has uncertainty of biases
-
-        Eigen::Matrix3d noise_pos; 
-        // Eigen::MatrixXd noise_pos; 
-        // prediction matrix, A aka F
-        Eigen::Matrix3d A_pos;
-        Eigen::Matrix3d A_pos_T;
-        // Eigen::MatrixXd A_pos;
-        // Eigen::MatrixXd A_pos_T;
-        // input matrix, B
-        Eigen::Vector3d B_pos;
-        // Eigen::MatrixXd B_pos;
-        // measurement matrix H
-        Eigen::RowVector3d H_pos;
-        Eigen::Vector3d H_pos_T;
-        // Eigen::MatrixXd H_pos;
-        // Eigen::MatrixXd H_pos_T;
-
-        Eigen::Vector3d state_pos_post;
-
-        //kalman gain matrix, K
-
-        Eigen::Vector3d gain_x;
-        Eigen::Vector3d gain_y;
-        Eigen::Vector3d gain_z;
-        
-        // Eigen::MatrixXd gain_pos;
-
-        Eigen::VectorXd measurement_covariance_x;
-        Eigen::VectorXd measurement_covariance_y;
-        Eigen::VectorXd measurement_covariance_z;
-
-        // R matrix, the covariance matrix of the measurement
-        // Eigen::Matrix3d measurement_covariance_pos;
-
-
-
-        // OTHER
-        double roll;
-        double pitch;
-        double yaw;
-        double init_calib_roll;
-        double init_calib_pitch;
-        double init_calib_yaw;
-        double g_acc_var_measurement;
-        double k_gain;
-        deque<sensor_msgs::msg::Imu::SharedPtr> imu_buffer;
-        double measurement_time{};
-        double process_time{};
 
         Eigen::Vector3d acceleration;
         Eigen::Vector3d angular_velocity;
@@ -211,27 +182,30 @@ class EKF : public rclcpp::Node
 
         nav_msgs::msg::Path path;
 
+        std::string imu_topic_;
+       
+
+        double process_noise_roll_;
+        double process_noise_pitch_;
+        double process_noise_yaw_;
+        double process_noise_pos_;
+
         // Eigen::Quaterniond orientation_quaternion;
         tf2::Quaternion orientation_quaternion;
 
         // Eigen::Quaterniond madgwick_orientation_quaternion;
         tf2::Quaternion madgwick_orientation_quaternion;
 
-        // ROS PARAMETERS
-        std::string imu_topic_;
-       
-        double process_noise_roll_;
-        double process_noise_pitch_;
-        double process_noise_yaw_;
-        double measurement_noise_roll_; 
-        double measurement_noise_pitch_; 
-        double measurement_noise_yaw_; 
+        double roll;
+        double pitch;
+        double yaw;
+        double init_calib_roll;
+        double init_calib_pitch;
+        double init_calib_yaw;
+        double g_acc_var_measurement;
+        double k_gain;
 
-        double process_noise_pos_;
-        double measurement_noise_pos_; 
-
-
-        int init_calib_steps_;
+        deque<sensor_msgs::msg::Imu::SharedPtr> imu_buffer;
 
         int imu_step_delay_;
 
@@ -239,6 +213,8 @@ class EKF : public rclcpp::Node
         bool use_madgwick_orientation_{};
         bool relative_mode_{};
 
+        double measurement_time{};
+        double process_time{};
 
     
     
@@ -302,7 +278,6 @@ class EKF : public rclcpp::Node
 
             imu_sub = this->create_subscription<sensor_msgs::msg::Imu>(imu_topic_, 100, std::bind(&EKF::imuDataHandler, this, _1), options1);
             odom_sub = this->create_subscription<nav_msgs::msg::Odometry>("/odom", 100, std::bind(&EKF::odometryHandler, this, _1), options2);
-            lidar_odometry_transformation_sub = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>("/transformation/lidar", 100, std::bind(&EKF::transformationHandler, this, _1), options2);
             // keyframe_odom_sub = this->create_subscription<nav_msgs::msg::Odometry>("/odom_keyframe", 100, std::bind(&EKF::keyframeHandler, this, _1), options2);
 
             odometry_pub = this->create_publisher<nav_msgs::msg::Odometry>("/odom_kalman", 100);
@@ -330,17 +305,20 @@ class EKF : public rclcpp::Node
             process_time = 0.0;
 
 
-            // imu_dt_ = 0.01; //TODO: make this a ros parameter, done
+            // imu_dt_ = 0.01; //TODO: make this a ros parameter
             double imu_dt_sq = imu_dt_*imu_dt_;
 
-            // Eye9 = Eigen::Matrix<double,9,9>();
-            Eye3 = Eigen::Matrix3d::Identity();
-            state_pos_post.fill(0.0);
 
             // orientation
             state_pitch = Eigen::Vector2d(0.0, 0.0);
             state_yaw   = Eigen::Vector2d(0.0, 0.0);
             state_roll  = Eigen::Vector2d(0.0, 0.0);
+
+            // position
+            state_x  = Eigen::Vector3d(0.0, 0.0, 0.0);
+            state_y  = Eigen::Vector3d(0.0, 0.0, 0.0);
+            state_z  = Eigen::Vector3d(0.0, 0.0, 0.0);
+
             // orientation
             A_ori   << 1.0, -imu_dt_,
                        0.0, 1.0;
@@ -349,20 +327,41 @@ class EKF : public rclcpp::Node
             H_ori   << 1.0, 0.0;
             H_ori_T << 1.0, 0.0;
 
+            // position
+            A_pos   << 1.0, imu_dt_, -imu_dt_sq/2,
+                       0.0, 1.0, -imu_dt_,
+                       0.0, 0.0, 1.0;
+            A_pos_T = A_pos.transpose();
+            B_pos   = Eigen::Vector3d(imu_dt_sq/2, imu_dt_,  0.0);
+            H_pos   << 1.0, 0.0, 0.0;
+            H_pos_T << 1.0, 0.0, 0.0;
+
+
             double init_uncertainty_ori_var = 0.00001;
             uncertainty_pitch = Eigen::Matrix2d::Identity() * init_uncertainty_ori_var;
             uncertainty_yaw   = Eigen::Matrix2d::Identity() * init_uncertainty_ori_var;
             uncertainty_roll  = Eigen::Matrix2d::Identity() * init_uncertainty_ori_var;
 
+            double init_uncertainty_pos_var = 0.00001;
+            uncertainty_x = Eigen::Matrix3d::Identity() * init_uncertainty_pos_var;
+            uncertainty_y = Eigen::Matrix3d::Identity() * init_uncertainty_pos_var;
+            uncertainty_z = Eigen::Matrix3d::Identity() * init_uncertainty_pos_var;
+
             // double process_noise_ori_var = 0.0001;
-            noise_roll  = Eigen::Matrix2d::Identity() * process_noise_roll_  *process_noise_roll_;
-            noise_pitch = Eigen::Matrix2d::Identity() * process_noise_pitch_ *process_noise_pitch_;
-            noise_yaw   = Eigen::Matrix2d::Identity() * process_noise_yaw_   *process_noise_yaw_;
+            noise_roll  = Eigen::Matrix2d::Identity() * process_noise_roll_*process_noise_roll_;
+            noise_pitch = Eigen::Matrix2d::Identity() * process_noise_pitch_*process_noise_pitch_;
+            noise_yaw   = Eigen::Matrix2d::Identity() * process_noise_yaw_*process_noise_yaw_;
             noise_roll(0,0)  *= imu_dt_sq;
             noise_pitch(0,0) *= imu_dt_sq;
             noise_yaw(0,0)   *= imu_dt_sq;
 
-            
+
+            // double process_noise_pos_var = 0.1;
+            noise_pos << imu_dt_sq*imu_dt_sq/4.0 * process_noise_pos_*process_noise_pos_, imu_dt_sq*imu_dt_/2 * process_noise_pos_*process_noise_pos_, 0.0,
+                         imu_dt_sq*imu_dt_/2 * process_noise_pos_*process_noise_pos_, imu_dt_sq * process_noise_pos_*process_noise_pos_, 0.0,
+                         0.0, 0.0, 0.0;
+
+
             // measurement_noise_ori = 0.0001; // radians²
             measurement_noise_roll = Eigen::VectorXd(1);
             measurement_noise_roll << measurement_noise_roll_*measurement_noise_roll_;
@@ -371,106 +370,19 @@ class EKF : public rclcpp::Node
             measurement_noise_yaw = Eigen::VectorXd(1);
             measurement_noise_yaw << measurement_noise_yaw_*measurement_noise_yaw_;
 
-            gain_roll   = uncertainty_roll  * H_ori_T * (H_ori * uncertainty_roll   * H_ori_T + measurement_noise_roll).inverse(); // + R in the inverse  but not at foregone at the init
-            gain_pitch  = uncertainty_pitch * H_ori_T * (H_ori * uncertainty_pitch  * H_ori_T + measurement_noise_pitch).inverse(); // + R in the inverse  but not at the init
-            gain_yaw    = uncertainty_yaw   * H_ori_T * (H_ori * uncertainty_yaw    * H_ori_T + measurement_noise_yaw).inverse(); // + R in the inverse  but not at foregone at the init
-
-
-
-
-            // POSITION
-            state_x  = Eigen::Vector3d(0.0, 0.0, 0.0);
-            state_y  = Eigen::Vector3d(0.0, 0.0, 0.0);
-            state_z  = Eigen::Vector3d(0.0, 0.0, 0.0);
-            // state_pos = Eigen::VectorXd(9);
-            // state_pos.fill(0.0);
-
-
-            // position
-            A_pos   << 1.0, imu_dt_, -imu_dt_sq/2,
-                       0.0, 1.0, -imu_dt_,
-                       0.0, 0.0, 1.0;
-            // A_pos = Eigen::Matrix<double,9,9>();
-            // A_pos   << 1.0, 0.0, 0.0, imu_dt_, 0.0, 0.0, -imu_dt_sq/2.0, 0.0, 0.0,
-            //            0.0, 1.0, 0.0, 0.0, imu_dt_, 0.0, 0.0, -imu_dt_sq/2.0, 0.0, 
-            //            0.0, 0.0, 1.0, 0.0, 0.0, imu_dt_, 0.0, 0.0, -imu_dt_sq/2.0, 
-            //            0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -imu_dt_, 0.0, 0.0,
-            //            0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -imu_dt_, 0.0, 
-            //            0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -imu_dt_, 
-            //            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
-            //            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 
-            //            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0;
-
-
-            // A_pos_T = Eigen::Matrix<double,9,9>();
-            A_pos_T = A_pos.transpose();
-
-            B_pos   = Eigen::Vector3d(imu_dt_sq/2, imu_dt_,  0.0);
-            // B_pos   = Eigen::Matrix<double,9,3>();
-            // B_pos   << imu_dt_sq/2.0, 0.0, 0.0,
-            //            0.0, imu_dt_sq/2.0, 0.0,
-            //            0.0, 0.0, imu_dt_sq/2.0,
-            //            imu_dt_, 0.0, 0.0,
-            //            0.0, imu_dt_, 0.0,
-            //            0.0, 0.0, imu_dt_,
-            //            0.0, 0.0, 0.0,
-            //            0.0, 0.0, 0.0,
-            //            0.0, 0.0, 0.0;
-
-
-            H_pos   << 1.0, 0.0, 0.0;
-            H_pos_T << 1.0, 0.0, 0.0;
-            // Eigen::Matrix3d Eye = Eigen::Matrix3d::Identity();
-            // H_pos_T = Eigen::Matrix<double,9,3>();
-            // H_pos_T   << Eye, Eye*0.0, Eye*0.0;
-  
-            // H_pos = Eigen::Matrix<double,3,9>();
-            // H_pos = H_pos_T.transpose();
-
-            
-
-
-            double init_uncertainty_pos_std = 0.001;
-            uncertainty_x = Eigen::Matrix3d::Identity() * init_uncertainty_pos_std;
-            uncertainty_y = Eigen::Matrix3d::Identity() * init_uncertainty_pos_std;
-            uncertainty_z = Eigen::Matrix3d::Identity() * init_uncertainty_pos_std;
-            // uncertainty_pos = Eigen::Matrix<double,9,9>();
-            // uncertainty_pos << Eigen::MatrixXd::Identity(9, 9) * init_uncertainty_pos_std *init_uncertainty_pos_std;
-
-
-
-            // double process_noise_pos_var = 0.1;
-            Eigen::Vector3d noise_pos_vec(3);
-            noise_pos_vec << imu_dt_sq/2.0, imu_dt_,  0.0;
-            // Eigen::VectorXd noise_pos_vec(9);
-            // noise_pos_vec << imu_dt_sq/2.0, imu_dt_sq/2.0, imu_dt_sq/2.0, imu_dt_, imu_dt_, imu_dt_, 0.0, 0.0, 0.0 ;
-            // noise_pos = Eigen::Matrix<double,9,9>();
-            noise_pos = noise_pos_vec * noise_pos_vec.transpose() * process_noise_pos_*process_noise_pos_;
-            // noise_pos << imu_dt_sq*imu_dt_sq/4.0 * process_noise_pos_*process_noise_pos_, imu_dt_sq*imu_dt_/2 * process_noise_pos_*process_noise_pos_, 0.0,
-            //              imu_dt_sq*imu_dt_/2 * process_noise_pos_*process_noise_pos_, imu_dt_sq * process_noise_pos_*process_noise_pos_, 0.0,
-            //              0.0, 0.0, 0.0;
-            RCLCPP_INFO(get_logger(),"pos process noise %f", noise_pos(0,0)*1e10);
-            RCLCPP_INFO(get_logger(),"prev pos process noise %f", imu_dt_sq*imu_dt_sq/4.0 * process_noise_pos_*process_noise_pos_*1e10);
-
-
 
             // measurement_noise_pos = 0.00001; // meters²
-            measurement_covariance_x = Eigen::VectorXd(1);
-            measurement_covariance_x << measurement_noise_pos_*measurement_noise_pos_;
-            measurement_covariance_y = Eigen::VectorXd(1);
-            measurement_covariance_y << measurement_noise_pos_*measurement_noise_pos_;
-            measurement_covariance_z = Eigen::VectorXd(1);
-            measurement_covariance_z << measurement_noise_pos_*measurement_noise_pos_;
+            measurement_noise_x = Eigen::VectorXd(1);
+            measurement_noise_x << measurement_noise_pos_*measurement_noise_pos_;
+            measurement_noise_y = Eigen::VectorXd(1);
+            measurement_noise_y << measurement_noise_pos_*measurement_noise_pos_;
+            measurement_noise_z = Eigen::VectorXd(1);
+            measurement_noise_z << measurement_noise_pos_*measurement_noise_pos_;
 
-            // initial/static covariance
-            // measurement_covariance_pos = Eigen::Matrix3d::Identity() * measurement_noise_pos_* measurement_noise_pos_;
-
-            gain_x = uncertainty_x * H_pos_T * (H_pos * uncertainty_x * H_pos_T + measurement_covariance_x).inverse(); 
-            gain_y = uncertainty_y * H_pos_T * (H_pos * uncertainty_y * H_pos_T + measurement_covariance_y).inverse(); 
-            gain_z = uncertainty_z * H_pos_T * (H_pos * uncertainty_z * H_pos_T + measurement_covariance_z).inverse(); 
-            // gain_pos = Eigen::Matrix<double,9,3>();
-            // gain_pos = uncertainty_pos * H_pos_T * (H_pos * uncertainty_pos * H_pos_T + measurement_covariance_pos).inverse(); 
-            
+            gain_roll   = uncertainty_roll  * H_ori_T * (H_ori * uncertainty_roll   * H_ori_T).inverse(); // + R in the inverse  but not at foregone at the init
+            gain_pitch  = uncertainty_pitch * H_ori_T * (H_ori * uncertainty_pitch  * H_ori_T).inverse(); // + R in the inverse  but not at the init
+            gain_yaw    = uncertainty_yaw   * H_ori_T * (H_ori * uncertainty_yaw    * H_ori_T).inverse(); // + R in the inverse  but not at foregone at the init
+        
         
             latestPoseInfo.qw = 1.0;
             latestPoseInfo.qx = 0.0;
@@ -482,31 +394,14 @@ class EKF : public rclcpp::Node
 
             orientation_quaternion = tf2::Quaternion(0.0, 0.0, 0.0, 1.0);
             madgwick_orientation_quaternion = tf2::Quaternion(0.0, 0.0, 0.0, 1.0);
-
-            RCLCPP_INFO(get_logger(),"Parameters and Arrays initialized..");
         }
 
-        void updateMeasurementCovariance(double new_error_std)
+        void updateMeasurementNoise(double new_error_std)
         {
             // measurement_noise_pos = 0.00001; // meters²
-            // measurement_covariance_pos = Eigen::Matrix3d::Identity() * new_error_std*new_error_std;
-            measurement_covariance_x << new_error_std*new_error_std;
-            measurement_covariance_y << new_error_std*new_error_std;
-            measurement_covariance_z << new_error_std*new_error_std;
-        }
-
-        void updateMeasurementCovariance(double new_error_std_x, double new_error_std_z, double new_error_std_y)
-        {
-            measurement_covariance_x << new_error_std_x*new_error_std_y;
-            measurement_covariance_y << new_error_std_y*new_error_std_y;
-            measurement_covariance_z << new_error_std_z*new_error_std_z;
-        }
-
-        void updateMeasurementCovariance(Eigen::Vector3d cov_diagonal)
-        {
-            measurement_covariance_x << cov_diagonal[0] * cov_diagonal[0];
-            measurement_covariance_y << cov_diagonal[1] * cov_diagonal[1];
-            measurement_covariance_z << cov_diagonal[2] * cov_diagonal[2];
+            measurement_noise_x << new_error_std*new_error_std;
+            measurement_noise_y << new_error_std*new_error_std;
+            measurement_noise_z << new_error_std*new_error_std;
         }
 
         void updateOrientationQuaternionFromState()
@@ -624,16 +519,15 @@ class EKF : public rclcpp::Node
                 state_pitch[0] += M_PI_2;
 
             while (state_yaw[0] > M_PI)
-                state_yaw[0] -= 2.0*M_PI;
+                state_yaw[0] -= M_PI;
             while (state_yaw[0] < -M_PI)
-                state_yaw[0] += 2.0*M_PI; 
+                state_yaw[0] += M_PI; 
         }
 
         void imuDataHandler(const sensor_msgs::msg::Imu::SharedPtr imu_data)
         {
             
             // put data into buffer back
-            RCLCPP_INFO_ONCE(get_logger(),"First IMU message recieved..");
             imu_buffer.push_back(imu_data);
 
             
@@ -642,7 +536,7 @@ class EKF : public rclcpp::Node
 
         void runProcess(double cutoff_time)
         {   
-            while (process_time <= cutoff_time && !imu_buffer.empty()){
+            while (process_time <= cutoff_time){
                 RCLCPP_INFO(get_logger(), "updating process to measurement.. cutoff: %f, current process time: %f",cutoff_time, process_time);
                 
                 step++;
@@ -656,11 +550,11 @@ class EKF : public rclcpp::Node
 
                 // process_time = toSec(delayed_imu_data->header.stamp);
 
-                
-                madgwick_orientation_quaternion.setW(delayed_imu_data->orientation.w);
-                madgwick_orientation_quaternion.setX(delayed_imu_data->orientation.x);
-                madgwick_orientation_quaternion.setY(delayed_imu_data->orientation.y);
-                madgwick_orientation_quaternion.setZ(delayed_imu_data->orientation.z);
+                // if use madgwick..
+                // madgwick_orientation_quaternion.setW(delayed_imu_data->orientation.w);
+                // madgwick_orientation_quaternion.setX(delayed_imu_data->orientation.x);
+                // madgwick_orientation_quaternion.setY(delayed_imu_data->orientation.y);
+                // madgwick_orientation_quaternion.setZ(delayed_imu_data->orientation.z);
                 // tf2::Matrix3x3 orient_matrix(madgwick_orientation_quaternion);
                 // orient_matrix.getEulerYPR(yaw, pitch, roll);
                 // limitEulerAngles();
@@ -679,7 +573,7 @@ class EKF : public rclcpp::Node
 
                 processUpdate();
                 process_time = toSec(imu_buffer.front()->header.stamp); // get time stamp of next to compare with cutoff.
-                // RCLCPP_INFO(get_logger(),"Where's the poop?");
+
             }
         }
 
@@ -718,7 +612,6 @@ class EKF : public rclcpp::Node
             state_x = A_pos * state_x  +  B_pos * acceleration[0];
             state_y = A_pos * state_y  +  B_pos * acceleration[1];
             state_z = A_pos * state_z  +  B_pos * acceleration[2];
-            // state_pos = A_pos * state_pos + B_pos * acceleration;
 
             // RCLCPP_INFO(get_logger(), "incoming data = %f", imu_data->angular_velocity.x);
             // RCLCPP_INFO(get_logger(), "state_pitch = %f, pitch_bias %f", state_pitch[0], state_pitch[1]);
@@ -732,8 +625,6 @@ class EKF : public rclcpp::Node
             uncertainty_x = A_pos * uncertainty_x * A_pos_T + noise_pos;
             uncertainty_y = A_pos * uncertainty_y * A_pos_T + noise_pos;
             uncertainty_z = A_pos * uncertainty_z * A_pos_T + noise_pos;
-            // uncertainty_pos = A_pos * uncertainty_pos * A_pos_T + noise_pos;
-
 
             // RCLCPP_INFO(get_logger(), "update: pos state = %f, %f, %f, vel = %f, %f, %f, bias = %f %f %f", state_x[0], state_y[0], state_z[0], state_x[1], state_y[1], state_z[1], state_x[2], state_y[2], state_z[2]);
             // RCLCPP_INFO(get_logger(), "update: pos uncertainty = %f, %f, %f", uncertainty_x(0,0), uncertainty_y(0,0), uncertainty_z(0,0));
@@ -751,49 +642,24 @@ class EKF : public rclcpp::Node
             latestPoseInfo.x = state_x[0]; 
             latestPoseInfo.y = state_y[0];
             latestPoseInfo.z = state_z[0];
-
             
             publishOdometry();
             printStates();
-        }
-
-        Eigen::Matrix3d getCovariancePos(std::array<double, 36> &cov_msg)
-        {
-            vector<int> pos_cov_array_idx{0,1,2,6,7,8,12,13,14};
-            Eigen::Matrix3d cov_mat;
-            for (int i=0 ; i < 9; i++){
-                // RCLCPP_INFO(get_logger(),"%i, %f", pos_cov_array_idx[i], cov_msg[pos_cov_array_idx[i]]);
-                cov_mat(i) = cov_msg[pos_cov_array_idx[i]] ;
-            }
-
-            return cov_mat;
-        }
-
-        Eigen::Vector3d getCovarianceDiagonalPos(std::array<double, 36> &cov_msg)
-        {
-            // vector<int> pos_cov_array_idx{0,1,2,6,7,8,12,13,14};
-            vector<int> pos_cov_array_idx{0,7,14};
-            Eigen::Vector3d cov_vec;
-            for (int i=0 ; i < 3; i++){
-                // RCLCPP_INFO(get_logger(),"%i, %f", pos_cov_array_idx[i], cov_msg[pos_cov_array_idx[i]]);
-                cov_vec[i] = cov_msg[pos_cov_array_idx[i]] ;
-            }
-
-            return cov_vec;
         }
 
 
         void odometryHandler(const nav_msgs::msg::Odometry::SharedPtr odom_message)
         {
             // NOTE: the lidar measurement are (almost) absolute mearuements and should not be transformed
-            // DONE !! TODO IMPORTANT: IN THE CASE THAT YAW CROSSOVER FROM -180 TO 180 ( 360 TO 0) THAT THE ERROR IS FOUND AS THE SHORTEST PATH !!
-            // TODO get timestamp and only use lidar measurements up to this timestamp? DONE
+
+            // !! TODO IMPORTANT: IN THE CASE THAT YAW CROSSOVER FROM -180 TO 180 ( 360 TO 0) THAT THE ERROR IS FOUND AS THE SHORTEST PATH !!
+
+            // TODO get timestamp and only use lidar measurements up to this timestamp?
+
             // rclcpp::Time new_time = odom_message->header.stamp; // make an update time-stamp
             // odom_message.header.stamp = cloud_header.stamp;
 
-            if (relative_mode_)
-                return;
-            
+
             // Eigen::Quaterniond lidar_orientation(odom_message->pose.pose.orientation.w, 
             //                                      odom_message->pose.pose.orientation.x,
             //                                      odom_message->pose.pose.orientation.y,
@@ -802,7 +668,8 @@ class EKF : public rclcpp::Node
 
             // process imu up till the measurement time step to make the state up to date for the incoming measurement
             measurement_time = toSec(odom_message->header.stamp);
-            runProcess(measurement_time); // runs process from imu buffer up till the input time;
+            runProcess(measurement_time);
+
 
             Eigen::Vector3d lidar_position(odom_message->pose.pose.position.x,
                                            odom_message->pose.pose.position.y,
@@ -813,31 +680,55 @@ class EKF : public rclcpp::Node
                                               odom_message->pose.pose.orientation.z,
                                               odom_message->pose.pose.orientation.w);
 
-            // measurement_covariance_pos = getCovariancePos(odom_message->pose.covariance);
-            Eigen::Vector3d cov_diagonal = getCovarianceDiagonalPos(odom_message->pose.covariance);
-            updateMeasurementCovariance(cov_diagonal);
 
-            // for (int i=0 ; i < 3; i++){
-            //     RCLCPP_INFO(get_logger(),"cov[%i]= %f", i, cov_diagonal[i]);
-            // }
+            
 
+            RCLCPP_INFO(get_logger(), "Lidar measurement: pos = %f, %f %f", lidar_position[0], lidar_position[1], lidar_position[2]);
+            RCLCPP_INFO(get_logger(), "Lidar measurement: rpy = %f, %f, %f", roll*57.3, pitch*57.3, yaw*57.3);
 
-            // ORIENTATION
+            // // ORIENTATION
             // measurementUpdateOrientation(lidar_orientation);
-            if (use_madgwick_orientation_){
-                measurementUpdateOrientation(madgwick_orientation_quaternion);
-            }
+            // // update kalman gain
+            // gain_roll   = uncertainty_roll  * H_ori_T * (H_ori * uncertainty_roll  * H_ori_T + measurement_noise_roll ).inverse(); 
+            // gain_pitch  = uncertainty_pitch * H_ori_T * (H_ori * uncertainty_pitch * H_ori_T + measurement_noise_pitch).inverse(); 
+            // gain_yaw    = uncertainty_yaw   * H_ori_T * (H_ori * uncertainty_yaw   * H_ori_T + measurement_noise_yaw  ).inverse(); 
+
+            // // update state with kalman gain
+            // state_roll  += gain_roll  * (roll  - H_ori * state_roll);
+            // state_pitch += gain_pitch * (pitch - H_ori * state_pitch); 
+            // state_yaw   += gain_yaw   * (yaw   - H_ori * state_yaw); // <-- YAW CROSSOVER ERROR HERE ! see note at top of function
+
+            // // recalculate uncertainty after measurement
+            // uncertainty_roll  = (Eigen::Matrix2d::Identity() - gain_roll  * H_ori) * uncertainty_roll ;
+            // uncertainty_pitch = (Eigen::Matrix2d::Identity() - gain_pitch * H_ori) * uncertainty_pitch;
+            // uncertainty_yaw   = (Eigen::Matrix2d::Identity() - gain_yaw   * H_ori) * uncertainty_yaw  ;
+
 
             // // POSITION
             measurementUpdatePosition(lidar_position);
+            // // update kalman gain
+            // gain_x = uncertainty_x * H_pos_T * (H_pos * uncertainty_x * H_pos_T + measurement_noise_x).inverse(); 
+            // gain_y = uncertainty_y * H_pos_T * (H_pos * uncertainty_y * H_pos_T + measurement_noise_y).inverse(); 
+            // gain_z = uncertainty_z * H_pos_T * (H_pos * uncertainty_z * H_pos_T + measurement_noise_z).inverse(); 
 
+            // // update state with kalman gain
+            // state_x += gain_x * (lidar_position[0] - H_pos * state_x);
+            // state_y += gain_y * (lidar_position[1] - H_pos * state_y);
+            // state_z += gain_z * (lidar_position[2] - H_pos * state_z);
+          
+            // // recalculate uncertainty after measurement
+            // uncertainty_x = (Eigen::Matrix3d::Identity() - gain_x * H_pos) * uncertainty_x;
+            // uncertainty_y = (Eigen::Matrix3d::Identity() - gain_y * H_pos) * uncertainty_y;
+            // uncertainty_z = (Eigen::Matrix3d::Identity() - gain_z * H_pos) * uncertainty_z;
+
+
+            // RCLCPP_INFO(get_logger(), "Lidar measurement: ori = %f, %f, %f", roll, pitch, yaw);
+            // RCLCPP_INFO(get_logger(), "Lidar measurement: pos = %f, %f, %f",odom_message->pose.pose.position.x, odom_message->pose.pose.position.y, odom_message->pose.pose.position.z);
+            // RCLCPP_INFO(get_logger(), "Lidar measurement: pos state = %f, %f, %f, vel = %f, %f, %f, bias = %f, %f, %f, gain = %f, %f, %f", state_x[0], state_y[0], state_z[0], state_x[1], state_y[1], state_z[1], state_x[2], state_y[2], state_z[2], gain_x[0], gain_y[0], gain_z[0]);
+            // RCLCPP_INFO(get_logger(), "lidar measurement: pos uncertainty = %f, %f, %f", uncertainty_x(0,0), uncertainty_y(0,0), uncertainty_z(0,0));
+
+            // updateOrientationQuaternion();
             updateOrientationQuaternionFromState();
-
-
-            RCLCPP_INFO(get_logger(), "Lidar measurement: pos = %f, %f %f", lidar_position[0], lidar_position[1], lidar_position[2]);
-            // RCLCPP_INFO(get_logger(), "Lidar measurement: rpy = %f, %f, %f", roll*57.3, pitch*57.3, yaw*57.3);
-            
-            state_pos_post = Eigen::Vector3d( state_x[0], state_y[0], state_z[0]);
 
             // latestPoseInfo.time = odom_message->header.stamp;
             // latestPoseInfo.qw = odom_message->pose.pose.orientation.w;
@@ -852,162 +743,38 @@ class EKF : public rclcpp::Node
             latestPoseInfo.y = state_y[0];
             latestPoseInfo.z = state_z[0];
 
-
             step_since_keyframe++;
             // updateMeasurementNoise(measurement_noise_pos_* pow(1.1 , step_since_keyframe) );
 
-            RCLCPP_INFO(get_logger(), "Absolute is running");
+
             // publishOdometry();
 
         }
 
-        void transformationHandler(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr transform_message)
-        {
-            // NOTE: the lidar measurement are (almost) absolute mearuements and should not be transformed
-            // DONE !! TODO IMPORTANT: IN THE CASE THAT YAW CROSSOVER FROM -180 TO 180 ( 360 TO 0) THAT THE ERROR IS FOUND AS THE SHORTEST PATH !!
-            // TODO get timestamp and only use lidar measurements up to this timestamp? DONE
-            // rclcpp::Time new_time = odom_message->header.stamp; // make an update time-stamp
-            // odom_message.header.stamp = cloud_header.stamp;
-
-
-            // Eigen::Quaterniond lidar_orientation(odom_message->pose.pose.orientation.w, 
-            //                                      odom_message->pose.pose.orientation.x,
-            //                                      odom_message->pose.pose.orientation.y,
-            //                                      odom_message->pose.pose.orientation.z);
-
-
-            // process imu up till the measurement time step to make the state up to date for the incoming measurement
-            if (!relative_mode_) {
-                return;
-            }
-
-            
-
-            measurement_time = toSec(transform_message->header.stamp);
-            runProcess(measurement_time); // runs process from imu buffer up till the input time;
-
-            Eigen::Vector3d translation(transform_message->pose.pose.position.x,
-                                           transform_message->pose.pose.position.y,
-                                           transform_message->pose.pose.position.z);
-
-            // tf2::Quaternion rotation_orientation(transform_message->pose.pose.orientation.x, 
-            //                                   transform_message->pose.pose.orientation.y,
-            //                                   transform_message->pose.pose.orientation.z,
-            //                                   transform_message->pose.pose.orientation.w);
-
-            // measurement_covariance_pos = getCovariancePos(odom_message->pose.covariance);
-            Eigen::Vector3d cov_diagonal = getCovarianceDiagonalPos(transform_message->pose.covariance);
-            updateMeasurementCovariance(cov_diagonal);
-
-            // for (int i=0 ; i < 3; i++){
-            //     RCLCPP_INFO(get_logger(),"cov[%i]= %f", i, cov_diagonal[i]);
-            // }
-
-
-            // ORIENTATION
-            // measurementUpdateOrientation(lidar_orientation);
-            if (use_madgwick_orientation_){
-
-                measurementUpdateOrientation(madgwick_orientation_quaternion);
-            }
-            updateOrientationQuaternionFromState();
-
-            // // POSITION
-            // rotate translation
-            
-            // SHOULD BE ROTATED  BY THE LIDAR ORIENTATION AND NOT THE STATE?
-            translation = tf2Eigen(orientation_quaternion) * translation;
-            measurementUpdateTranslation(translation);
-
-
-
-            // RCLCPP_INFO(get_logger(), "Lidar measurement: pos = %f, %f %f", lidar_position[0], lidar_position[1], lidar_position[2]);
-            // RCLCPP_INFO(get_logger(), "Lidar measurement: rpy = %f, %f, %f", roll*57.3, pitch*57.3, yaw*57.3);
-            
-            state_pos_post = Eigen::Vector3d( state_x[0], state_y[0], state_z[0]);
-
-            // latestPoseInfo.time = odom_message->header.stamp;
-            // latestPoseInfo.qw = odom_message->pose.pose.orientation.w;
-            // latestPoseInfo.qx = odom_message->pose.pose.orientation.x;
-            // latestPoseInfo.qy = odom_message->pose.pose.orientation.y;
-            // latestPoseInfo.qz = odom_message->pose.pose.orientation.z;
-            latestPoseInfo.qw = orientation_quaternion.getW();
-            latestPoseInfo.qx = orientation_quaternion.getX();
-            latestPoseInfo.qy = orientation_quaternion.getY();
-            latestPoseInfo.qz = orientation_quaternion.getZ();
-            latestPoseInfo.x = state_x[0]; 
-            latestPoseInfo.y = state_y[0];
-            latestPoseInfo.z = state_z[0];
-
-
-            step_since_keyframe++;
-            // updateMeasurementNoise(measurement_noise_pos_* pow(1.1 , step_since_keyframe) );
-
-            RCLCPP_INFO(get_logger(), "Relative is running");
-            // publishOdometry();
-
-        }
-
-        Eigen::Quaterniond tf2Eigen(tf2::Quaternion tf2q)
-        {
-            Eigen::Quaterniond Eq(tf2q.getW(),tf2q.getX(), tf2q.getY(),tf2q.getZ() );
-            return Eq;
-        }
 
 
         void measurementUpdatePosition(Eigen::Vector3d lidar_position)
         {  
             // POSITION
             // update kalman gain
-            gain_x = uncertainty_x * H_pos_T * (H_pos * uncertainty_x * H_pos_T + measurement_covariance_x).inverse(); 
-            gain_y = uncertainty_y * H_pos_T * (H_pos * uncertainty_y * H_pos_T + measurement_covariance_y).inverse(); 
-            gain_z = uncertainty_z * H_pos_T * (H_pos * uncertainty_z * H_pos_T + measurement_covariance_z).inverse(); 
-            // gain_pos = uncertainty_pos * H_pos_T * (H_pos * uncertainty_pos * H_pos_T + measurement_covariance_pos ).inverse(); 
+            gain_x = uncertainty_x * H_pos_T * (H_pos * uncertainty_x * H_pos_T + measurement_noise_x).inverse(); 
+            gain_y = uncertainty_y * H_pos_T * (H_pos * uncertainty_y * H_pos_T + measurement_noise_y).inverse(); 
+            gain_z = uncertainty_z * H_pos_T * (H_pos * uncertainty_z * H_pos_T + measurement_noise_z).inverse(); 
 
             // update state with kalman gain
             state_x += gain_x * (lidar_position[0] - H_pos * state_x);
             state_y += gain_y * (lidar_position[1] - H_pos * state_y);
             state_z += gain_z * (lidar_position[2] - H_pos * state_z);
-            // state_pos += gain_pos * (lidar_position - H_pos * state_pos);
           
             // recalculate uncertainty after measurement
             uncertainty_x = (Eigen::Matrix3d::Identity() - gain_x * H_pos) * uncertainty_x;
             uncertainty_y = (Eigen::Matrix3d::Identity() - gain_y * H_pos) * uncertainty_y;
             uncertainty_z = (Eigen::Matrix3d::Identity() - gain_z * H_pos) * uncertainty_z;
-
-            // uncertainty_pos = (Eye9 - gain_pos * H_pos) * uncertainty_pos; // this is unstable apparently
-            // uncertainty_pos = (Eye9 - gain_pos * H_pos) * uncertainty_pos * (Eye9 - gain_pos * H_pos).transpose() + gain_pos * measurement_covariance_pos * gain_pos.transpose(); 
         }
 
-        void measurementUpdateTranslation(Eigen::Vector3d translation)
-        {  
-            // POSITION
-            Eigen::Vector3d new_position = state_pos_post + translation;
-
-            // update kalman gain
-            gain_x = uncertainty_x * H_pos_T * (H_pos * uncertainty_x * H_pos_T + measurement_covariance_x).inverse(); 
-            gain_y = uncertainty_y * H_pos_T * (H_pos * uncertainty_y * H_pos_T + measurement_covariance_y).inverse(); 
-            gain_z = uncertainty_z * H_pos_T * (H_pos * uncertainty_z * H_pos_T + measurement_covariance_z).inverse(); 
-            // gain_pos = uncertainty_pos * H_pos_T * (H_pos * uncertainty_pos * H_pos_T + measurement_covariance_pos ).inverse(); 
-
-            // update state with kalman gain
-            state_x += gain_x * (new_position[0] - H_pos * state_x);
-            state_y += gain_y * (new_position[1] - H_pos * state_y);
-            state_z += gain_z * (new_position[2] - H_pos * state_z);
-            // state_pos += gain_pos * (lidar_position - H_pos * state_pos);
-          
-            // recalculate uncertainty after measurement
-            uncertainty_x = (Eigen::Matrix3d::Identity() - gain_x * H_pos) * uncertainty_x;
-            uncertainty_y = (Eigen::Matrix3d::Identity() - gain_y * H_pos) * uncertainty_y;
-            uncertainty_z = (Eigen::Matrix3d::Identity() - gain_z * H_pos) * uncertainty_z;
-
-            // uncertainty_pos = (Eye9 - gain_pos * H_pos) * uncertainty_pos; // this is unstable apparently
-            // uncertainty_pos = (Eye9 - gain_pos * H_pos) * uncertainty_pos * (Eye9 - gain_pos * H_pos).transpose() + gain_pos * measurement_covariance_pos * gain_pos.transpose(); 
-        }
-
-        void measurementUpdateOrientation(tf2::Quaternion orientation)
+        void measurementUpdateOrientation(tf2::Quaternion lidar_orientation)
         {
-            orientationQuaternionToEuler(orientation); // updates values roll, pitch, and yaw from the input quaternion
+            orientationQuaternionToEuler(lidar_orientation); // updates values roll, pitch, and yaw from the input quaternion
             limitEulerAngles();
             // ORIENTATION
             // update kalman gain
@@ -1015,25 +782,10 @@ class EKF : public rclcpp::Node
             gain_pitch  = uncertainty_pitch * H_ori_T * (H_ori * uncertainty_pitch * H_ori_T + measurement_noise_pitch).inverse(); 
             gain_yaw    = uncertainty_yaw   * H_ori_T * (H_ori * uncertainty_yaw   * H_ori_T + measurement_noise_yaw  ).inverse(); 
 
-            double yaw_innovation = yaw  - H_ori * state_yaw;
-            
-            RCLCPP_INFO(get_logger(), "measured yaw: %f", yaw*57.3 );
-            RCLCPP_INFO(get_logger(), "current yaw: %f", state_yaw[0]*57.3 );
-            RCLCPP_INFO(get_logger(), "yaw innovation before: %f", yaw_innovation*57.3 );
-            if (yaw_innovation >= M_PI){
-                yaw_innovation -= M_PI;
-                // yaw_innovation *= -1.0;
-            } else if (yaw_innovation <= - M_PI){
-                yaw_innovation += M_PI;
-                // yaw_innovation *= -1.0;
-            }
-            RCLCPP_INFO(get_logger(), "yaw innovation after: %f", yaw_innovation*57.3 );
-            // only yaw is expected to have crossover error else the object is upside down..
-
             // update state with kalman gain
             state_roll  += gain_roll  * (roll  - H_ori * state_roll);
             state_pitch += gain_pitch * (pitch - H_ori * state_pitch); 
-            state_yaw   += gain_yaw   * yaw_innovation; // <-- YAW CROSSOVER ERROR HERE ! see note at top of function
+            state_yaw   += gain_yaw   * (yaw   - H_ori * state_yaw); // <-- YAW CROSSOVER ERROR HERE ! see note at top of function
 
             // recalculate uncertainty after measurement
             uncertainty_roll  = (Eigen::Matrix2d::Identity() - gain_roll  * H_ori) * uncertainty_roll ;
@@ -1108,11 +860,9 @@ class EKF : public rclcpp::Node
             gain_yaw    = uncertainty_yaw   * H_ori_T * (H_ori * uncertainty_yaw    * H_ori_T + measurement_noise_yaw).inverse(); 
             gain_roll   = uncertainty_roll  * H_ori_T * (H_ori * uncertainty_roll   * H_ori_T + measurement_noise_roll).inverse(); 
 
-            gain_x = uncertainty_x * H_pos_T * (H_pos * uncertainty_x * H_pos_T + measurement_covariance_x).inverse(); 
-            gain_y = uncertainty_y * H_pos_T * (H_pos * uncertainty_y * H_pos_T + measurement_covariance_y).inverse(); 
-            gain_z = uncertainty_z * H_pos_T * (H_pos * uncertainty_z * H_pos_T + measurement_covariance_z).inverse();
-
-            // gain_pos = uncertainty_pos * H_pos_T * (H_pos * uncertainty_pos * H_pos_T + measurement_covariance_pos).inverse(); 
+            gain_x = uncertainty_x * H_pos_T * (H_pos * uncertainty_x * H_pos_T + measurement_noise_x).inverse(); 
+            gain_y = uncertainty_y * H_pos_T * (H_pos * uncertainty_y * H_pos_T + measurement_noise_y).inverse(); 
+            gain_z = uncertainty_z * H_pos_T * (H_pos * uncertainty_z * H_pos_T + measurement_noise_z).inverse(); 
 
 
             // update state from measurement in this case it is an assumed static postion and orientation
@@ -1123,14 +873,9 @@ class EKF : public rclcpp::Node
             state_x += gain_x * (0.0 - H_pos * state_x);
             state_y += gain_y * (0.0 - H_pos * state_y);
             state_z += gain_z * (0.0 - H_pos * state_z);
-            // Eigen::Vector3d zero_vector(0.0, 0.0, 0.0);
-            // state_pos += gain_pos * (zero_vector - H_pos * state_pos);
-          
 
             RCLCPP_INFO(get_logger(), "zero measurement: ori state = %f, %f, %f, bias = %f, %f, %f, gain = %f, %f, %f", state_pitch[0], state_yaw[0], state_roll[0], state_pitch[1], state_yaw[1], state_roll[1], gain_pitch[0], gain_yaw[0], gain_roll[0]);
-            // RCLCPP_INFO(get_logger(), "zero measurement: pos state = %f, %f, %f, vel = %f, %f, %f, bias = %f, %f, %f, gain = %f, %f, %f", state_pos[0], state_pos[1], state_pos[2], state_pos[3], state_pos[4], state_pos[5], state_pos[6], state_pos[7], state_pos[8]);
             RCLCPP_INFO(get_logger(), "zero measurement: pos state = %f, %f, %f, vel = %f, %f, %f, bias = %f, %f, %f, gain = %f, %f, %f", state_x[0], state_y[0], state_z[0], state_x[1], state_y[1], state_z[1], state_x[2], state_y[2], state_z[2], gain_x[0], gain_y[0], gain_z[0]);
-
 
             // update uncertainties
             uncertainty_pitch   = (Eigen::Matrix2d::Identity() - gain_pitch * H_ori) * uncertainty_pitch;
@@ -1141,10 +886,7 @@ class EKF : public rclcpp::Node
             uncertainty_y = (Eigen::Matrix3d::Identity() - gain_y * H_pos) * uncertainty_y;
             uncertainty_z = (Eigen::Matrix3d::Identity() - gain_z * H_pos) * uncertainty_z;
 
-            // uncertainty_pos = (Eye9 - gain_pos * H_pos) * uncertainty_pos;
-
             RCLCPP_INFO(get_logger(), "zero measurement: ori uncertainty = %f, %f, %f", uncertainty_pitch(0,0), uncertainty_yaw(0,0), uncertainty_roll(0,0));
-            // RCLCPP_INFO(get_logger(), "zero measurement: pos uncertainty = %f, %f, %f", uncertainty_pos(0,0), uncertainty_pos(1,1), uncertainty_pos(2,2));
             RCLCPP_INFO(get_logger(), "zero measurement: pos uncertainty = %f, %f, %f", uncertainty_x(0,0), uncertainty_y(0,0), uncertainty_z(0,0));
 
         }
@@ -1237,14 +979,10 @@ class EKF : public rclcpp::Node
 
                 
 
-                // RCLCPP_INFO(get_logger(), "update: pos state = %f, %f, %f, vel = %f, %f, %f, bias = %f %f %f", state_pos[0], state_pos[1], state_pos[2], state_pos[3], state_pos[4], state_pos[5], state_pos[6], state_pos[7], state_pos[8]);
-                RCLCPP_INFO(get_logger(), "update: pos state = %f, %f, %f", state_x[0], state_y[0], state_z[0]);
-                RCLCPP_INFO(get_logger(), "update: pos vel = %f, %f, %f, ", state_x[1], state_y[1], state_z[1]);
-                RCLCPP_INFO(get_logger(), "update: pos bias = %f %f %f", state_x[2], state_y[2], state_z[2]);
-                RCLCPP_INFO(get_logger(), "update: pos uncertainty = %f, %f, %f", sqrt(uncertainty_x(0,0)), sqrt(uncertainty_y(0,0)), sqrt(uncertainty_z(0,0)));
-                RCLCPP_INFO(get_logger(), "update: ori state = %f, %f, %f", state_roll[0]*57.3, state_pitch[0]*57.3, state_yaw[0]*57.3);
-                RCLCPP_INFO(get_logger(), "update: ori bias = %f %f %f",  state_roll[1]*57.3, state_pitch[1]*57.3, state_yaw[1]*57.3);
-                RCLCPP_INFO(get_logger(), "update: ori uncertainty = %f, %f, %f", sqrt(uncertainty_roll(0,0))*57.3, sqrt(uncertainty_pitch(0,0))*57.3, sqrt(uncertainty_yaw(0,0))*57.3);
+                RCLCPP_INFO(get_logger(), "update: pos state = %f, %f, %f, vel = %f, %f, %f, bias = %f %f %f", state_x[0], state_y[0], state_z[0], state_x[1], state_y[1], state_z[1], state_x[2], state_y[2], state_z[2]);
+                RCLCPP_INFO(get_logger(), "update: pos uncertainty = %f, %f, %f", uncertainty_x(0,0), uncertainty_y(0,0), uncertainty_z(0,0));
+                RCLCPP_INFO(get_logger(), "update: ori state = %f, %f, %f, bias = %f %f %f", state_roll[0]*57.3, state_pitch[0]*57.3, state_yaw[0]*57.3, state_roll[1]*57.3, state_pitch[1]*57.3, state_yaw[1]*57.3);
+                RCLCPP_INFO(get_logger(), "update: ori uncertainty = %f, %f, %f", uncertainty_roll(0,0), uncertainty_pitch(0,0), uncertainty_yaw(0,0));
             }
         }
 

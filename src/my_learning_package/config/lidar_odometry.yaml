@@ -6,8 +6,8 @@ lidar_odometry:
     cloud_scale_previuos_cloud_weight: 0.9 # 0-1
     ds_lc_voxel_size_ratio: 10.0 # the bigger, the finer the local map is
     points_per_cloud_scale: 25
-    keyframe_threshold_length: 2.0 # meters
-    keyframe_threshold_angle: 30.0 # deg
+    keyframe_threshold_length: 2.0 # meters 2.0 is good
+    keyframe_threshold_angle: 30.0 # deg 30 is good
     keyframe_threshold_fitness: 0.1
     keyframe_threshold_index: 0 # 0 means it is not used
     icp_max_iterations: 50
@@ -17,9 +17,9 @@ lidar_odometry:
     use_inertial_constraint: false
     use_wheel_constraint: false
 
-    translation_std_min_x: 0.005
-    translation_std_min_y: 0.02
-    translation_std_min_z: 0.005
+    translation_std_min_x: 0.001
+    translation_std_min_y: 0.005
+    translation_std_min_z: 0.003
 
     # use_fusion_with_imu: false # i this needed here?
 

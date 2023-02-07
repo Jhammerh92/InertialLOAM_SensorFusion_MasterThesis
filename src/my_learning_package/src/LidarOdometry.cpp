@@ -193,7 +193,7 @@ class LidarOdometry : public rclcpp::Node
         rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr keyframe_odometry_pub;
         rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub;
 
-        // rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr lidar_odometry_transformation_pub;
+        rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr lidar_odometry_transformation_pub;
 
 
         std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
@@ -330,7 +330,7 @@ class LidarOdometry : public rclcpp::Node
             keyframe_odometry_pub = this->create_publisher<nav_msgs::msg::Odometry>("/odom_keyframe", 100);
             path_pub = this->create_publisher<nav_msgs::msg::Path>("/path", 100);
 
-            // lidar_odometry_transformation_pub = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("/transformation/lidar", 100);
+            lidar_odometry_transformation_pub = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("/transformation/lidar", 100);
 
             keyframe_idx_pub = this->create_publisher<std_msgs::msg::Int64>("keyframe_idx", 100);
 
@@ -513,6 +513,7 @@ class LidarOdometry : public rclcpp::Node
             publishKeyframeOdometry();
 
             odometry_transformation_guess = Eigen::Matrix4d::Identity(); //last_odometry_transformation;
+            // odometry_transformation_guess = last_odometry_transformation;
             registration_transformation = Eigen::Matrix4d::Identity(); // this has to be "reset" as it it is used to determine the next guess
 
 
@@ -943,9 +944,9 @@ class LidarOdometry : public rclcpp::Node
             // translation = rot_mat * translation;
             RCLCPP_INFO(get_logger(), "translation %f %f %f", translation[0], translation[1], translation[2]);
 
-            translation_std_x = ( abs(translation[0]) *0.5)  + translation_std_min_x_;
+            translation_std_x = ( abs(translation[0]) *0.25)  + translation_std_min_x_;
             translation_std_y = ( abs(translation[1]) *0.5)  + translation_std_min_y_;
-            translation_std_z = ( abs(translation[2]) *0.5)  + translation_std_min_z_;
+            translation_std_z = ( abs(translation[2]) *0.25)  + translation_std_min_z_;
 
             max(translation_std_x, translation_std_min_x_);
             max(translation_std_y, translation_std_min_y_);
@@ -963,8 +964,13 @@ class LidarOdometry : public rclcpp::Node
         {   
             Eigen::Matrix4d next_odometry_pose = keyframe_poses.back() * registration_transformation; // the next evaluted odometry pose, not neccesarily a keyframe
             // last_odometry_transformation =  next_odometry_pose * last_odometry_pose.inverse(); // transformation between 2 consecutive odometry poses
-            last_odometry_transformation = (last_odometry_pose.inverse() * next_odometry_pose).inverse() ; // transformation between 2 consecutive odometry poses
-            
+            last_odometry_transformation = (last_odometry_pose.inverse() * next_odometry_pose) ; // transformation between 2 consecutive odometry poses
+            // last_odometry_transformation.block<3,1>(0,3) = - last_odometry_transformation.block<3,1>(0,3);
+
+            Eigen::Vector3d reg_translation(registration_transformation.block<3, 1>(0, 3));
+
+            RCLCPP_INFO(get_logger(), "reg_translation %f %f %f", reg_translation[0], reg_translation[1], reg_translation[2]);
+
             updateTransformationError();
 
             // if (use_wheel_constraint_ ){
@@ -975,9 +981,9 @@ class LidarOdometry : public rclcpp::Node
             //     registration_transformation =  keyframe_poses.back().inverse() * next_odometry_pose;
             // }
             
-            // odometry_transformation_guess = registration_transformation * last_odometry_transformation; // prediction of the next transformation using the previuosly found transformation - used for ICP initial guess
+            odometry_transformation_guess = registration_transformation * last_odometry_transformation; // prediction of the next transformation using the previuosly found transformation - used for ICP initial guess
             // odometry_transformation_guess = Eigen::Matrix4d::Identity();
-            odometry_transformation_guess = registration_transformation;
+            // odometry_transformation_guess = registration_transformation;
 
             last_odometry_pose = next_odometry_pose;
 
@@ -1217,30 +1223,36 @@ class LidarOdometry : public rclcpp::Node
             return cloudOut;
         }
 
-        // void publishTransformation()
-        // {
-        //     Eigen::Quaterniond reg_quarternion(last_odometry_transformation.block<3, 3>(0, 0)); 
-        //     reg_quarternion.normalize();
-        //     Eigen::Vector3d reg_translation(last_odometry_transformation.block<3, 1>(0, 3));
+        void publishTransformation()
+        {
+            Eigen::Quaterniond quarternion(last_odometry_transformation.block<3, 3>(0, 0)); 
+            quarternion.normalize();
+            Eigen::Vector3d translation(last_odometry_transformation.block<3, 1>(0, 3));
 
 
-        //     transformation_geommsg.header.stamp = cloud_header.stamp;
+            transformation_geommsg.header.stamp = cloud_header.stamp;
 
-        //     transformation_geommsg.pose.pose.orientation.w = reg_quarternion.w();
-        //     transformation_geommsg.pose.pose.orientation.x = reg_quarternion.x();
-        //     transformation_geommsg.pose.pose.orientation.y = reg_quarternion.y();
-        //     transformation_geommsg.pose.pose.orientation.z = reg_quarternion.z();
+            transformation_geommsg.pose.pose.orientation.w = quarternion.w();
+            transformation_geommsg.pose.pose.orientation.x = quarternion.x();
+            transformation_geommsg.pose.pose.orientation.y = quarternion.y();
+            transformation_geommsg.pose.pose.orientation.z = quarternion.z();
 
 
-        //     transformation_geommsg.pose.pose.position.x = reg_translation.x();
-        //     transformation_geommsg.pose.pose.position.y = reg_translation.y();
-        //     transformation_geommsg.pose.pose.position.z = reg_translation.z();
+            transformation_geommsg.pose.pose.position.x = translation.x();
+            transformation_geommsg.pose.pose.position.y = translation.y();
+            transformation_geommsg.pose.pose.position.z = translation.z();
 
-        //     // handle covariance depending on registration, eg. use deviation from guess 
+            vector<double> cov_diag{translation_std_x*translation_std_x, translation_std_y* translation_std_y, translation_std_z * translation_std_z, 0.0,0.0,0.0};
+            Eigen::MatrixXd cov_mat = createCovarianceEigen(cov_diag);
+            Eigen::Matrix3d rot_mat = last_odometry_pose.block<3,3>(0,0);
+            rotateCovMatrix(cov_mat, rot_mat);
+            setCovariance(transformation_geommsg.pose.covariance, cov_mat);
 
-        //     lidar_odometry_transformation_pub->publish(transformation_geommsg);
+            // handle covariance depending on registration, eg. use deviation from guess 
 
-        // }
+            lidar_odometry_transformation_pub->publish(transformation_geommsg);
+
+        }
 
         void rotateCovMatrix(Eigen::MatrixXd &cov_mat, Eigen::Matrix3d rot_mat)
         {
@@ -1285,7 +1297,11 @@ class LidarOdometry : public rclcpp::Node
         // assumes a 6x6 covariance array ie. size 36
         {
             for (int i=0 ; i < 36; i++){
-                cov[i] = cov_mat(i);
+                double value = cov_mat(i);
+                if (value < 0.0) {
+                    value = 0.0;
+                }
+                cov[i] = value; // no negative values
             }
 
         }
@@ -1306,12 +1322,7 @@ class LidarOdometry : public rclcpp::Node
             vector<double> cov_diag{translation_std_x*translation_std_x, translation_std_y* translation_std_y, translation_std_z * translation_std_z, 0.0,0.0,0.0};
             Eigen::MatrixXd cov_mat = createCovarianceEigen(cov_diag);
             Eigen::Matrix3d rot_mat = last_odometry_pose.block<3,3>(0,0);
-            // Eigen::Matrix3d rot_mat(latestPoseInfo.qx,
-            //                         latestPoseInfo.qy,
-            //                         latestPoseInfo.qz,
-            //                         latestPoseInfo.qw);
             rotateCovMatrix(cov_mat, rot_mat);
-
             setCovariance(odom.pose.covariance, cov_mat);
 
             // odom.twist.twist.linear.x // add the velocities in twist
@@ -1514,6 +1525,7 @@ class LidarOdometry : public rclcpp::Node
 
             // savePointCloud(); // testing this here
             publishOdometry(); 
+            publishTransformation();
 
             if (newKeyframeRequired() == true) {
                 pushKeyframe();
