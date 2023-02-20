@@ -23,7 +23,7 @@ def generate_launch_description():
                                      "remove_gravity_vector": True,
                                      "constant_dt": 0.01 }],
         # arguments=['-p','use_mag:=false'],
-        remappings=[('/imu/data_raw','/imu/data_filter')],
+        # remappings=[('/imu/data_raw','/imu/data_filter')],
         
     )
 

@@ -68,6 +68,9 @@ ament_target_dependencies(ekf ${dependencies})
 add_executable(imu_filter src/IMUFilter.cpp)
 ament_target_dependencies(imu_filter ${dependencies})
 
+add_executable(ins src/INS.cpp)
+ament_target_dependencies(ins ${dependencies})
+
 # add_executable(format_convert src/FormatConvert.cpp)
 # ament_target_dependencies(format_convert ${dependencies})
 
@@ -101,6 +104,7 @@ install(TARGETS
   loam_backend
   ekf
   imu_filter
+  ins
   # format_convert
   preprocessing_velodyne
   lidar_odometry_velodyne

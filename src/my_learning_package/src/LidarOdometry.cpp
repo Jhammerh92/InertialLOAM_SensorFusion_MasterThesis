@@ -812,7 +812,7 @@ class LidarOdometry : public rclcpp::Node
 
             icp_fitness = icp.getFitnessScore();
             
-            RCLCPP_DEBUG(get_logger(), "ICP has converged: %i,  score: %f", icp.hasConverged(), icp_fitness);
+            RCLCPP_INFO(get_logger(), "ICP %i,  fitness: %f", icp.hasConverged(), icp_fitness);
 
 
             return;
@@ -872,7 +872,7 @@ class LidarOdometry : public rclcpp::Node
 
             icp_fitness = icp.getFitnessScore();
             
-            RCLCPP_INFO(get_logger(), "ICP has converged: %i,  score: %f", icp.hasConverged(), icp_fitness);
+            RCLCPP_INFO(get_logger(), "ICP: %i,  fitness: %f", icp.hasConverged(), icp_fitness);
 
 
             return;
@@ -942,11 +942,11 @@ class LidarOdometry : public rclcpp::Node
             Eigen::Vector3d translation(last_odometry_transformation.block<3, 1>(0, 3));
 
             // translation = rot_mat * translation;
-            RCLCPP_INFO(get_logger(), "translation %f %f %f", translation[0], translation[1], translation[2]);
+            // RCLCPP_INFO(get_logger(), "translation %f %f %f", translation[0], translation[1], translation[2]);
 
-            translation_std_x = ( abs(translation[0]) *0.25)  + translation_std_min_x_;
-            translation_std_y = ( abs(translation[1]) *0.5)  + translation_std_min_y_;
-            translation_std_z = ( abs(translation[2]) *0.25)  + translation_std_min_z_;
+            translation_std_x = ( abs(translation[0]) *0.5)  + translation_std_min_x_;
+            translation_std_y = ( abs(translation[1]) *0.75)  + translation_std_min_y_;
+            translation_std_z = ( abs(translation[2]) *0.5)  + translation_std_min_z_;
 
             max(translation_std_x, translation_std_min_x_);
             max(translation_std_y, translation_std_min_y_);
@@ -969,7 +969,7 @@ class LidarOdometry : public rclcpp::Node
 
             Eigen::Vector3d reg_translation(registration_transformation.block<3, 1>(0, 3));
 
-            RCLCPP_INFO(get_logger(), "reg_translation %f %f %f", reg_translation[0], reg_translation[1], reg_translation[2]);
+            // RCLCPP_INFO(get_logger(), "reg_translation %f %f %f", reg_translation[0], reg_translation[1], reg_translation[2]);
 
             updateTransformationError();
 
