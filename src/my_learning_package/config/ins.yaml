@@ -1,0 +1,8 @@
+ins:
+  ros__parameters:
+    imu_dt: 0.01
+    imu_topic: "/imu/data"
+    use_madgwick: false
+    turn_on_bias_estimation_period: 0
+    gravity_estimation_period: 1000
+    

@@ -287,7 +287,7 @@ class EKF : public rclcpp::Node
             declare_parameter("imu_topic", "/imu/data_raw");
             get_parameter("imu_topic", imu_topic_);
 
-            declare_parameter("relative_mode", true);
+            declare_parameter("relative_mode", false);
             get_parameter("relative_mode", relative_mode_);
 
             declare_parameter("print_states", false);
@@ -311,9 +311,10 @@ class EKF : public rclcpp::Node
 
             imu_sub = this->create_subscription<sensor_msgs::msg::Imu>(imu_topic_, 100, std::bind(&EKF::imuDataHandler, this, _1), options1);
             odom_sub = this->create_subscription<nav_msgs::msg::Odometry>("/odom", 100, std::bind(&EKF::odometryHandler, this, _1), options2);
+
+
             lidar_odometry_transformation_sub = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>("/transformation/lidar", 100, std::bind(&EKF::transformationHandler, this, _1), options2);
             // keyframe_odom_sub = this->create_subscription<nav_msgs::msg::Odometry>("/odom_keyframe", 100, std::bind(&EKF::keyframeHandler, this, _1), options2);
-
             odometry_pub = this->create_publisher<nav_msgs::msg::Odometry>("/odom_kalman", 100);
             path_pub = this->create_publisher<nav_msgs::msg::Path>("/path_kalman", 100);
             initial_pose_pub = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("/initial_pose", 100);
@@ -393,7 +394,7 @@ class EKF : public rclcpp::Node
             state_z  = Eigen::Vector4d(0.0, 0.0, 0.0, 0.0);
             // state_pos = Eigen::VectorXd(9);
             // state_pos.fill(0.0);
-            RCLCPP_INFO(get_logger(),"HERE?");
+            
 
 
             // position
@@ -657,8 +658,6 @@ class EKF : public rclcpp::Node
             // put data into buffer back
             RCLCPP_INFO_ONCE(get_logger(),"First IMU message recieved..");
             imu_buffer.push_back(imu_data);
-
-            
              
         }
 
@@ -906,7 +905,7 @@ class EKF : public rclcpp::Node
                 return;
             }
 
-            
+            RCLCPP_INFO(get_logger(),"HERE?");
 
             measurement_time = toSec(transform_message->header.stamp);
             runProcess(measurement_time); // runs process from imu buffer up till the input time;

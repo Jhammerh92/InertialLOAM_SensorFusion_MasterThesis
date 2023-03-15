@@ -186,7 +186,7 @@ class LidarOdometry : public rclcpp::Node
         double keyframe_threshold_fitness_;
         int keyframe_threshold_index_; // max frames between keyframes
         int icp_max_iterations_;
-        double icp_max_correspondance_distance_;
+        double icp_max_correspondence_distance_;
         int local_map_width_;
 
         bool use_cloud_scale_for_ds_{};
@@ -223,7 +223,7 @@ class LidarOdometry : public rclcpp::Node
                 get_parameter("icp_max_iterations", icp_max_iterations_);
 
                 declare_parameter("icp_max_correspondance_distance", 0.5); 
-                get_parameter("icp_max_correspondance_distance", icp_max_correspondance_distance_);
+                get_parameter("icp_max_correspondance_distance", icp_max_correspondence_distance_);
 
                 declare_parameter("local_map_width", 20); 
                 get_parameter("local_map_width", local_map_width_);
@@ -545,7 +545,7 @@ class LidarOdometry : public rclcpp::Node
                 boost::shared_ptr<PointToPlane> p2p(new PointToPlane);
 
                 // double max_correspondance_distance = 0.05;
-                double max_correspondance_distance = icp_max_correspondance_distance_;
+                double max_correspondance_distance = icp_max_correspondence_distance_;
 
                 icp.setTransformationEstimation(p2p);
 

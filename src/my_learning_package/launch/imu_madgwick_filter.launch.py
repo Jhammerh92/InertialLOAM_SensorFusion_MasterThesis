@@ -13,7 +13,7 @@ def generate_launch_description():
     package_name='imu_filter_madgwick' #<--- CHANGE ME
     config_dir = os.path.join(get_package_share_directory(package_name), 'config')
 
-    ekf_node = Node(
+    madgwick_node = Node(
         package=package_name,
         name="imu_madgwick_filter",
         executable="imu_filter_madgwick_node",
@@ -29,6 +29,6 @@ def generate_launch_description():
 
 
 
-    ld.add_action(ekf_node)
+    ld.add_action(madgwick_node)
 
     return ld

@@ -1,25 +1,27 @@
 lidar_odometry:
   ros__parameters:
-    ds_voxel_size: 0.2
-    ds_voxel_size_lc: 0.01
-    use_cloud_scale_for_ds: true # if this is false above are used, if true below are used
+    ds_voxel_size: 0.0 # <0.05
+    ds_voxel_size_lc: 0.00 # 0.01
+    use_cloud_scale_for_ds: false # if this is false above are used, if true below are used
     cloud_scale_previuos_cloud_weight: 0.9 # 0-1
-    ds_lc_voxel_size_ratio: 10.0 # the bigger, the finer the local map is
-    points_per_cloud_scale: 15
-    keyframe_threshold_length: 2.0 # meters, 2.0 is good
-    keyframe_threshold_angle: 30.0 # deg, 30 is good
-    keyframe_threshold_fitness: 0.1
+    ds_lc_voxel_size_ratio: 200.0 # the bigger, the finer the local map is
+    points_per_cloud_scale: 25
+    keyframe_threshold_length: 0.001 # meters, 2.0 is good, 0.02 for dense maps!
+    keyframe_threshold_angle: 20.0 # deg, 30 is good
+    keyframe_threshold_fitness: 0.5
     keyframe_threshold_index: 0 # 0 means it is not used
-    icp_max_iterations: 50
-    icp_max_correspondance_distance: 0.05
-    local_map_width: 20
+    icp_max_iterations: 10 # 10-30
+    icp_max_coarse_iterations: 2 # 10-30
+    icp_max_correspondence_distance: 0.001 # should be less than voxelsize of source
+    coarse_correspondence_factor: 10
+    local_map_width: 100
     local_map_init_frames_count: 10
-    use_inertial_constraint: false
-    use_wheel_constraint: false
+    # use_inertial_constraint: false
+    # use_wheel_constraint: false
 
-    translation_std_min_x: 0.003
-    translation_std_min_y: 0.005
-    translation_std_min_z: 0.005
+    translation_std_min_x: 0.0005
+    translation_std_min_y: 0.0005
+    translation_std_min_z: 0.0005
 
     # use_fusion_with_imu: false # i this needed here?
 

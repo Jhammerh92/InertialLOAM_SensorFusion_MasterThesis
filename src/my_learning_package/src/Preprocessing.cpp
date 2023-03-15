@@ -317,7 +317,7 @@ public:
 
     void solveRotation(double dt, Eigen::Vector3d angular_velocity)
     {
-        Eigen::Vector3d un_gyr = 0.5 * (gyr_0 + angular_velocity);
+        Eigen::Vector3d un_gyr = 0.5 * (gyr_0 + angular_velocity); // mean gyrorate
         q_iMU *= deltaQ(un_gyr * dt);
         gyr_0 = angular_velocity;
     }
@@ -361,6 +361,8 @@ public:
         }
         current_time_imu = t_cur;
         idx_imu = i;
+
+
     }
 
     template <typename PointT>
@@ -575,7 +577,7 @@ public:
     PointT undistortPoint(PointT pt, const Eigen::Quaterniond quat) {
         
         Eigen::Vector3d pt_i(pt.x, pt.y, pt.z);
-        Eigen::Vector3d pt_s = quat * pt_i; // should in theory also account for the offset between lidar and IMU here
+        Eigen::Vector3d pt_s = quat * pt_i; // should in theory also have to account for the offset between lidar and IMU here
 
         PointT p_out;
         p_out.x = pt_s.x();
@@ -589,15 +591,15 @@ public:
     template <typename PointT>
     void undistortCloud(const boost::shared_ptr<pcl::PointCloud<PointT>> &cloud_in, boost::shared_ptr<pcl::PointCloud<PointT>> &cloud_out)
     {
-        double scan_time = 0.1;
-        double point_dt = scan_time / cloud_in->points.size(); // should be the first thing of the preprocessing for this reason
+        double scan_time = cloud_out->points[cloud_in->points.size()-1].intensity - (int)cloud_out->points[cloud_in->points.size()-1].intensity;
+        // double point_dt = scan_time / cloud_in->points.size(); // should be the first thing of the preprocessing for this reason
 
         Eigen::Quaterniond q0 = Eigen::Quaterniond::Identity();
 
 
         for (size_t i=0; i < cloud_in->points.size(); i++){
-
-            double dt_i = point_dt * i;
+            //  double dt_i = point_dt * i;
+            double dt_i = cloud_out->points[i].intensity - (int)cloud_out->points[i].intensity;
             double ratio_i = dt_i / scan_time;
             if(ratio_i >= 1.0) {
                 ratio_i = 1.0;
@@ -610,6 +612,24 @@ public:
         }
     }
 
+
+    template <typename PointT>
+    void imbedPointTime(const boost::shared_ptr<pcl::PointCloud<PointT>> &cloud_in, boost::shared_ptr<pcl::PointCloud<PointT>> &cloud_out){
+        double scan_time = 0.1;
+        double point_dt = scan_time / cloud_in->points.size(); // should be the first thing of the preprocessing for this reason
+
+        for (size_t i=0; i < cloud_in->points.size(); i++){
+
+            double dt_i = point_dt * i;
+            // double ratio_i = dt_i / scan_time;
+            // if(ratio_i >= 1.0) {
+            //     ratio_i = 1.0;
+            // }
+
+            cloud_out->points[i].intensity += dt_i;
+
+        }
+    }
 
     void processNext()
     {
@@ -629,7 +649,7 @@ public:
             cloud_header.frame_id = frame_id;
 
             time_scan_next = toSec(cloud_queue.front().header.stamp); // why take time from the next? and should it be double?
-            // !answer: the start-time of the next scan is the end of the current, this is needed to integrate the imu, and that why the buffer need to leave to
+            // !answer: the start-time of the next scan is the end of the current, this is needed to integrate the imu, and thats why the buffer needs to leave 1 frame
 
             if (cloud_queue.size() > 5)
             {
@@ -641,10 +661,11 @@ public:
         pcl::fromROSMsg(current_cloud_msg, *lidar_cloud_in_no_normals);
         #endif
 
+        // imbed the scan time of the individual point to the intesity value which is then the integer part, and the time is the fractional part
+        imbedPointTime(lidar_cloud_in_no_normals, lidar_cloud_in_no_normals);
 
 
-
-
+        // UNDISTORTION SHOULD BE THE FIRST PROCESSING STEP
         if (use_gyroscopic_undistortion_){
             // imu_stuff..
             int tmp_idx = 0;
@@ -661,15 +682,10 @@ public:
                 return;
             }
         
-        // pcl::removeNaNFromPointCloud(*lidar_cloud_in, *lidar_cloud_in, indices);
-
-
-        // UNDISTORTION SHOULD BE THE FIRST PROCESSING STEP
-        // undistort_cloud(...)  put it here
+       
             // if(imu_buffer.size() > 0) // this was just checked above
             processIMU(time_scan_next);
             RCLCPP_DEBUG(get_logger(), "IMU qauternion: w: %f, x: %f, y: %f, z: %f", q_iMU.w(), q_iMU.x(), q_iMU.y(), q_iMU.z());
-            // RCLCPP_INFO(get_logger(), "Waiting for IMU data..");
 
             if(isnan(q_iMU.w()) || isnan(q_iMU.x()) || isnan(q_iMU.y()) || isnan(q_iMU.z())) { // reset the imu orientation if values becomes nan
                 q_iMU = Eigen::Quaterniond::Identity();
