@@ -79,13 +79,15 @@ class INS : public rclcpp::Node
 
         rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub;
         rclcpp::Subscription<geometry_msgs::msg::WrenchStamped>::SharedPtr bias_sub;
+        rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub;
         // rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub;
         // rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr keyframe_odom_sub;
 
         
         rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr ins_pub;
+        
         // rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odometry_pub;
-        // rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub;
+        rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub;
 
         // rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr initial_pose_pub;
      
@@ -97,8 +99,13 @@ class INS : public rclcpp::Node
 
 
         double imu_dt_; 
+        double scan_dt{};
+        double scan_timestamp{};
+        double process_time{};
+
+        double calibration_time{};
         
-        double g_acc; // gravity scalar value
+        double g_acc_; // gravity scalar value
         double g_acc_var;
         double g_acc_sum;
         double g_acc_sumsq;
@@ -128,9 +135,12 @@ class INS : public rclcpp::Node
 
         Eigen::Quaterniond orientation;
         Eigen::Quaterniond orientation_post;
+        Eigen::Quaterniond orientation_dt;
+
+        Eigen::Vector3d ego_to_imu_offset;
 
         // Eigen::Vector3d jerk;
-        // Eigen::Vector3d angular_acceleration;
+        Eigen::Vector3d angular_acceleration;
 
         // double alpha_;
         // double beta_;
@@ -139,12 +149,16 @@ class INS : public rclcpp::Node
         std::string imu_topic_;
 
 
+        deque<double> g_buffer;
+        deque<Eigen::Vector3d> g_vec_buffer;
+
         deque<sensor_msgs::msg::Imu::SharedPtr> imu_delay_buffer;
 
         deque<sensor_msgs::msg::Imu::SharedPtr> imu_buffer;
         sensor_msgs::msg::Imu::SharedPtr delayed_imu_data;
 
         nav_msgs::msg::Odometry INS_odometry;
+        nav_msgs::msg::Path path;
 
         int imu_step_delay_;
         int turn_on_bias_estimation_period_;
@@ -152,6 +166,9 @@ class INS : public rclcpp::Node
 
         bool print_states_{};
         bool use_madgwick_{};
+        bool use_ficticiuos_force_correction_{};
+        bool use_kalman_bias_correction_{};
+        bool predict_next_scan_{};
 
         // std_msgs::msg::Header imu_data_header;
         // sensor_msgs::msg::Imu filtered_imu_data;
@@ -164,6 +181,9 @@ class INS : public rclcpp::Node
         {   
             declare_parameter("imu_dt", 0.01);
             get_parameter("imu_dt", imu_dt_);
+
+            declare_parameter("g_acc", 9.88);
+            get_parameter("g_acc", g_acc_);
 
             declare_parameter("turn_on_bias_estimation_period", 0);
             get_parameter("turn_on_bias_estimation_period", turn_on_bias_estimation_period_);
@@ -186,15 +206,24 @@ class INS : public rclcpp::Node
             declare_parameter("use_madgwick", false);
             get_parameter("use_madgwick", use_madgwick_);
 
+            declare_parameter("use_ficticiuos_force_correction", false);
+            get_parameter("use_ficticiuos_force_correction", use_ficticiuos_force_correction_);
+
+            declare_parameter("use_kalman_bias_correction", false);
+            get_parameter("use_kalman_bias_correction", use_kalman_bias_correction_);
+
+            declare_parameter("predict_next_scan", false);
+            get_parameter("predict_next_scan", predict_next_scan_);
+
 
             RCLCPP_INFO(get_logger(),"INS listning on topic %s", imu_topic_.c_str());
  
 
-            run_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-            run_timer = this->create_wall_timer(1ms, std::bind(&INS::processINS, this), run_cb_group_);
+            // run_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+            // run_timer = this->create_wall_timer(1ms, std::bind(&INS::runINS, this), run_cb_group_);
 
-            correction_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-            correction_timer = this->create_wall_timer(5000ms, std::bind(&INS::correctINSPose, this), correction_cb_group_);
+            // correction_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+            // correction_timer = this->create_wall_timer(5000ms, std::bind(&INS::correctINSPose, this), correction_cb_group_);
 
             sub1_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
             rclcpp::SubscriptionOptions options1;
@@ -207,12 +236,14 @@ class INS : public rclcpp::Node
 
             imu_sub = this->create_subscription<sensor_msgs::msg::Imu>(imu_topic_, 100, std::bind(&INS::imuDataHandler, this, _1), options1);
             bias_sub = this->create_subscription<geometry_msgs::msg::WrenchStamped>("/kalman_bias", 100, std::bind(&INS::biasHandler, this, _1), options2);
+            odom_sub = this->create_subscription<nav_msgs::msg::Odometry>("/odom", 100, std::bind(&INS::odomHandler, this, _1), options2);
             // odom_sub = this->create_subscription<nav_msgs::msg::Odometry>("/odom", 100, std::bind(&EKF::odometryHandler, this, _1), options2);
             // keyframe_odom_sub = this->create_subscription<nav_msgs::msg::Odometry>("/odom_keyframe", 100, std::bind(&EKF::keyframeHandler, this, _1), options2);
 
             ins_pub = this->create_publisher<nav_msgs::msg::Odometry>("/odom_ins", 100);
             // odometry_pub = this->create_publisher<nav_msgs::msg::Odometry>("/odom_kalman", 100);
             // path_pub = this->create_publisher<nav_msgs::msg::Path>("/path_kalman", 100);
+            path_pub = this->create_publisher<nav_msgs::msg::Path>("/path_ins", 100);
             // initial_pose_pub = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("/initial_pose", 100);
             
 
@@ -225,8 +256,8 @@ class INS : public rclcpp::Node
         {   
             step = 0;
 
-            g_acc = 9.825;
-            g_acc_var = 0.01;
+            // g_acc_ = 9.825;
+            g_acc_var = 0.1;
             g_acc_sum = 0.0;
             g_acc_sumsq = 0.0;
             g_vec << 0.0, 0.0, 1.0;
@@ -244,8 +275,12 @@ class INS : public rclcpp::Node
             angular_velocity_bias << 0.0,0.0,0.0;
             angular_velocity_offset << 0.0,0.0,0.0;
 
-            orientation = Eigen::Quaterniond(1.0, 0.0, 0.0, 0.0);
+            orientation = Eigen::Quaterniond::Identity();
+            orientation_dt = Eigen::Quaterniond::Identity();
             // orientation_post = Eigen::Quaterniond(1.0, 0.0, 0.0, 0.0);
+            
+            ego_to_imu_offset = Eigen::Vector3d(0.25, 0.0, 0.1); // forward 25 cm, raised 10cm?
+
 
             INS_odometry.child_frame_id = "ins";
 
@@ -259,78 +294,125 @@ class INS : public rclcpp::Node
 
         }
 
-        void biasHandler(const geometry_msgs::msg::WrenchStamped::SharedPtr bias_data){
+        void biasHandler(const geometry_msgs::msg::WrenchStamped::SharedPtr bias_msg){
+            // RCLCPP_INFO(get_logger(), "bias recieved!");
+            if (use_kalman_bias_correction_){
+                acceleration_bias.x() = bias_msg->wrench.force.x;
+                acceleration_bias.y() = bias_msg->wrench.force.y;
+                acceleration_bias.z() = bias_msg->wrench.force.z;
+            }
+            angular_velocity_bias.x() = bias_msg->wrench.torque.x;
+            angular_velocity_bias.y() = bias_msg->wrench.torque.y;
+            angular_velocity_bias.z() = bias_msg->wrench.torque.z;
+        }
 
+        void odomHandler(const nav_msgs::msg::Odometry::SharedPtr odom_data)
+        {
+            // scan dt is embedded in the top right position (idx 5) of 6x6 covariance matrix from LOAM node
+            scan_timestamp = toSec(odom_data->header.stamp);
+            scan_dt = odom_data->pose.covariance[5];
+
+            // Eigen::Vector3d lidar_pos(odom_data->pose.pose.position.x,
+            //                           odom_data->pose.pose.position.y,
+            //                           odom_data->pose.pose.position.z);
+            // Eigen::Vector3d lidar_vel(odom_data->twist.twist.linear.x,
+            //                           odom_data->twist.twist.linear.y,
+            //                           odom_data->twist.twist.linear.z);
+
+            // correctINSPose(position, lidar_vel);
+            if (predict_next_scan_)
+                processINS(scan_timestamp + scan_dt);
+            else
+                processINS(scan_timestamp);
+        }
+
+        double toSec(builtin_interfaces::msg::Time header_stamp)
+        {
+            rclcpp::Time time = header_stamp;
+            double nanoseconds = time.nanoseconds();
+
+            return nanoseconds * 1e-9;
+        }
+
+        void processINS(double cutoff_time)
+        {
+            while (process_time <= cutoff_time && !imu_buffer.empty()){
+
+                delayed_imu_data = imu_buffer.front();
+                imu_buffer.pop_front();
+
+                // RCLCPP_INFO_ONCE(get_logger(), "INS First imu msg recieved..");
+                step++;
+                // put data into buffer back
+                // imu_delay_buffer.push_back(imu_data);
+
+                // if (step < imu_step_delay_){ // if step is less than imu_step_delay return
+                //     return;
+                // }
+
+
+                INS_odometry.header = delayed_imu_data->header;
+                INS_odometry.header.frame_id = "odom";
+
+                // imu_data_header = delayed_imu_data->header;
+                // filtered_imu_data = *delayed_imu_data;
+
+                Eigen::Vector3d acceleration_in(delayed_imu_data->linear_acceleration.x,
+                                                delayed_imu_data->linear_acceleration.y,
+                                                delayed_imu_data->linear_acceleration.z);
+
+                angular_velocity << delayed_imu_data->angular_velocity.x,
+                                    delayed_imu_data->angular_velocity.y,
+                                    delayed_imu_data->angular_velocity.z;
+
+                Eigen::Quaterniond orientation_madgwick(delayed_imu_data->orientation.w,
+                                                delayed_imu_data->orientation.x,
+                                                delayed_imu_data->orientation.y, 
+                                                delayed_imu_data->orientation.z);
+
+
+                if (step < turn_on_bias_estimation_period_){
+                    turnOnBiasEstimation( angular_velocity);
+                }
+                
+
+
+                if (use_madgwick_){
+                    updateOrientation(orientation_madgwick);
+                } else {
+                    if (step < 2){
+                        initOrientationMadgwick(orientation_madgwick);
+                    }
+                    updateOrientation(angular_velocity);
+                }
+                updateAcceleration(acceleration_in);
+                updateVelocity();
+                // updatePosition();
+
+                if (step < gravity_estimation_period_*10){
+                    updateGravityCalibration(acceleration_in, toSec(delayed_imu_data->header.stamp));
+                }
+
+                publishINS( );
+
+
+                process_time = toSec(imu_buffer.front()->header.stamp);
+            }
         }
 
 
         
-        void processINS()
-        {
-            // get data from buffer front
-            if (!imu_buffer.empty()){
-                delayed_imu_data = imu_buffer.front();
-                imu_buffer.pop_front();
-            } else {
-                return;
-            }
-
-
-            // RCLCPP_INFO_ONCE(get_logger(), "INS First imu msg recieved..");
-            step++;
-            // put data into buffer back
-            // imu_delay_buffer.push_back(imu_data);
-
-            // if (step < imu_step_delay_){ // if step is less than imu_step_delay return
-            //     return;
-            // }
-
-
-            INS_odometry.header = delayed_imu_data->header;
-            INS_odometry.header.frame_id = "odom";
-
-            // imu_data_header = delayed_imu_data->header;
-            // filtered_imu_data = *delayed_imu_data;
-
-            Eigen::Vector3d acceleration_in(delayed_imu_data->linear_acceleration.x,
-                                            delayed_imu_data->linear_acceleration.y,
-                                            delayed_imu_data->linear_acceleration.z);
-
-            angular_velocity << delayed_imu_data->angular_velocity.x,
-                                delayed_imu_data->angular_velocity.y,
-                                delayed_imu_data->angular_velocity.z;
-
-            Eigen::Quaterniond orientation_madgwick(delayed_imu_data->orientation.w,
-                                              delayed_imu_data->orientation.x,
-                                              delayed_imu_data->orientation.y, 
-                                              delayed_imu_data->orientation.z);
-
-            if (step < gravity_estimation_period_){
-                updateGravityCalibration(acceleration_in);
-            }
-
-            if (step < turn_on_bias_estimation_period_){
-                turnOnBiasEstimation(acceleration_in, angular_velocity);
-            }
+        // void runINS()
+        // {
             
-
-
-            if (use_madgwick_){
-                updateOrientation(orientation_madgwick);
-            } else {
-                updateOrientation(angular_velocity);
-                if (step < 2){
-                    initOrientationMadgwick(orientation_madgwick);
-                }
-            }
-            updateAcceleration(acceleration_in);
-            updateVelocity();
-            updatePosition();
-
-
-            publishINS( );
-
-        }   
+        //     // // get data from buffer front
+        //     // if (!imu_buffer.empty()){
+        //     //     delayed_imu_data = imu_buffer.front();
+        //     //     imu_buffer.pop_front();
+        //     // } else {
+        //     //     return;
+        //     // }
+        // }   
 
         void initOrientationMadgwick(Eigen::Quaterniond q_in ){
             orientation_post = q_in;
@@ -362,12 +444,28 @@ class INS : public rclcpp::Node
         }
 
         void updateOrientation(Eigen::Vector3d angular_velocity ){
-            // if (step == 1){
-            //     orientation_post = q_in;
-            // } 
+            
+            orientation_post = orientation;
+            angular_acceleration = (previous_angular_velocity - angular_velocity) / imu_dt_;
             Eigen::Vector3d average_angular_velocity = 0.5 * (previous_angular_velocity + angular_velocity) - angular_velocity_bias - angular_velocity_offset;
-            orientation *= deltaQ(average_angular_velocity * imu_dt_);
+            // first half is for average, second is dq_dt = 1/2 q w
+            // but this should be taken care of in deltaQ??, ran two instances of madgwick that sent the rate twice..
+            orientation_dt = deltaQ(average_angular_velocity * imu_dt_);
+            orientation *= orientation_dt;
             previous_angular_velocity = angular_velocity; // the previos bias is baked in
+        }
+
+        Eigen::Vector3d calculateFicticiousAcceleration(){
+            Eigen::Vector3d omega(angular_velocity);
+            // no coriolis force as the imu is not moving relative to the ugv/robot
+            Eigen::Vector3d centrifugal_acc;
+            Eigen::Vector3d euler_acc; // requires angular acc
+            centrifugal_acc = omega.cross(omega.cross(ego_to_imu_offset));
+            euler_acc = angular_acceleration.cross(ego_to_imu_offset);
+            RCLCPP_INFO(get_logger(), "centrifugal acc %f %f %f", centrifugal_acc.x(), centrifugal_acc.y(), centrifugal_acc.z() );
+            RCLCPP_INFO(get_logger(), "euler acc %f %f %f", euler_acc.x(), euler_acc.y(), euler_acc.z() );
+            // euler_acc = - 
+            return centrifugal_acc + euler_acc;
         }
 
         void updateAcceleration(Eigen::Vector3d acc_in)
@@ -376,9 +474,15 @@ class INS : public rclcpp::Node
             // if (step == 1){
             //     acceleration_post = avg_quat*acc_in;
             // } 
-            gravity_vector << 0.0, 0.0, -g_acc;
-            acceleration = avg_quat * (acc_in - acceleration_bias);
-            acceleration = acceleration + gravity_vector;
+            Eigen::Vector3d ficticious_acc(0.0,0.0,0.0);
+            if (use_ficticiuos_force_correction_){
+                ficticious_acc = calculateFicticiousAcceleration();
+            } 
+
+            gravity_vector << 0.0, 0.0, -g_acc_;
+            acceleration =  avg_quat *(acc_in - ficticious_acc - acceleration_bias) ; // ficticious forces are in the body frame.
+            // acceleration = orientation*(acc_in - acceleration_bias);
+            acceleration =  acceleration + gravity_vector; // gravity vector is in world frame.
         }
 
         void updateVelocity()
@@ -393,6 +497,7 @@ class INS : public rclcpp::Node
         
         void publishINS()
         {
+            // header etc has been set earlier
             
             // data
             INS_odometry.pose.pose.position.x = position[0];
@@ -412,17 +517,28 @@ class INS : public rclcpp::Node
             INS_odometry.twist.twist.angular.y = angular_velocity[1];
             INS_odometry.twist.twist.angular.z = angular_velocity[2];
 
+            // covariance at some point here
+            // ...
 
             ins_pub->publish(INS_odometry);
 
+            geometry_msgs::msg::PoseStamped poseStamped;
+            poseStamped.header = INS_odometry.header;
+            poseStamped.pose = INS_odometry.pose.pose;
+            poseStamped.header.stamp = INS_odometry.header.stamp;
+            path.header.stamp = INS_odometry.header.stamp;
+            path.poses.push_back(poseStamped);
+            // path.header.frame_id = frame_id;
+            path.header.frame_id = "odom";
+            path_pub->publish(path);
 
         }
 
-        void correctINSPose(){
+        void correctINSPose(Eigen::Vector3d position_, Eigen::Vector3d velocity_){
             // update position and velocity from the kalman filter
             
-            position << 0.0,0.0,0.0;
-            velocity << 0.0,0.0,0.0;
+            position = position_;
+            velocity = velocity_;
             // orientation = Eigen::Quaterniond(1.0,0.0,0.0,0.0);
             
             // INS_odometry.pose.pose.orientation.w = orientation.w();
@@ -440,42 +556,96 @@ class INS : public rclcpp::Node
         }
 
 
-
-
-        void updateGravityCalibration(Eigen::Vector3d static_acc)
+        void updateGravityCalibration(Eigen::Vector3d static_acc, double time_stamp)
         {
-            if (step == 1)
-                return;
+            g_vec_buffer.push_back(static_acc);
+
+            // when enough time has passed trigger the calibration
+            if (time_stamp > (calibration_time + imu_dt_ * gravity_estimation_period_)){
+                double dt = time_stamp - calibration_time;
+                Eigen::Vector3d average_g_vec = Eigen::Vector3d::Zero();
+                size_t n = g_vec_buffer.size();
+                while (!g_vec_buffer.empty())
+                {
+                    average_g_vec += g_vec_buffer.front();
+                    g_vec_buffer.pop_front();
+                }
+                average_g_vec /= (float)n ;
+                Eigen::Vector3d average_g_norm = average_g_vec.normalized();
+                double average_g = average_g_vec.norm();
+
+                double displacement_from_gravity = position.dot(average_g_norm);
+                // double displacement_from_gravity = position.norm();
+
+                double g0 = (2* displacement_from_gravity/(dt*dt) + g_acc_);
+                
+
+                // g_acc_ = g0;
+
+                // kalman gain
+                g_acc_var_measurement = 0.02;
+                k_gain = g_acc_var / (g_acc_var + g_acc_var_measurement);
+
+                // update uncertainty of estimate
+                g_acc_var = (1 - k_gain) * g_acc_var;
+
+                // update estimate with mean 
+                RCLCPP_INFO(get_logger(), "Estimation of gravity: %f, old gravity: %f ", g0, g_acc_);
+                g_acc_ = g_acc_ + k_gain * (g0 - g_acc_);
+
+                RCLCPP_INFO(get_logger(), "Updated gravity value: %f +- %f", g_acc_, sqrt(g_acc_var));
+
+                position = Eigen::Vector3d::Zero();
+
+                calibration_time = time_stamp;
+            }
+        }
+
+        void updateGravityCalibrationKalman(Eigen::Vector3d static_acc)
+        {
+            size_t mean_steps = 50;
             // using Naïve algotihm, see wiki "algorithm for calculating variance".
             double new_g_acc = static_acc.norm();
-            Eigen::Vector3d new_g_vec = static_acc.normalized();
+            // Eigen::Vector3d new_g_vec = static_acc.normalized();
+            if (step == 1)
+                g_acc_ = new_g_acc;
 
-            g_acc_sum += new_g_acc;
-            g_acc_sumsq += new_g_acc*new_g_acc;
-            g_acc_var_measurement = (g_acc_sumsq - (g_acc_sum*g_acc_sum)/(double)step) / ((double)step - 1.0); // measuremet uncertainty 
-            // get mean of running measurements
-            double g_acc_mean = g_acc_sum / (double)step;
+            g_buffer.push_back(new_g_acc);
 
-            if (step < 50)
+            if (g_buffer.size() < mean_steps) {
                 return;
-            // kalman gain
+            }
+
+            g_acc_sum = 0.0;
+            g_acc_sumsq = 0.0;
+            for (size_t i=0; i> mean_steps; i++)
+            {
+                double g_ = g_buffer.front();
+                g_acc_sum += g_;
+                g_acc_sumsq += g_*g_;
+                g_buffer.pop_front();
+            }
+            g_acc_var_measurement = (g_acc_sumsq - (g_acc_sum*g_acc_sum)/(double)mean_steps) / ((double)mean_steps - 1.0); // measuremet uncertainty 
+            double g_acc_mean = g_acc_sum / (double)mean_steps;
+
+            // // kalman gain
             k_gain = g_acc_var / (g_acc_var + g_acc_var_measurement);
 
-            // update uncertainty of estimate
+            // // update uncertainty of estimate
             g_acc_var = (1 - k_gain) * g_acc_var;
 
-            // update estimate with mean 
-            g_acc = g_acc + k_gain * (g_acc_mean - g_acc);
+            // // update estimate with mean 
+            g_acc_ = g_acc_ + k_gain * (g_acc_mean - g_acc_);
 
-            g_vec = (1 - k_gain) *  new_g_vec;
+            // g_vec = (1 - k_gain) *  new_g_vec;
 
 
-            RCLCPP_INFO(get_logger(), "Static Calibration: gravity estimate: %f m/s²", g_acc);
+            RCLCPP_INFO(get_logger(), "Static Calibration: gravity estimate: %f m/s²", g_acc_);
             RCLCPP_INFO(get_logger(), "Static Calibration: std: %f m/s²", sqrt(g_acc_var));
             RCLCPP_INFO(get_logger(), "Static Calibration: measurement std: %f",sqrt(g_acc_var_measurement));
             RCLCPP_INFO(get_logger(), "Static Calibration: update gain: %f", k_gain);
-            RCLCPP_INFO(get_logger(), "Static Calibration: gravity norm vector: %f %f %f", g_vec[0], g_vec[1], g_vec[2] );
-                    // RCLCPP_INFO(get_logger(), "Static Calibration: pitch: %f deg, roll: %f deg", init_calib_pitch *57.3, init_calib_roll*57.3 );
+            // RCLCPP_INFO(get_logger(), "Static Calibration: gravity norm vector: %f %f %f", g_vec[0], g_vec[1], g_vec[2] );
+            // RCLCPP_INFO(get_logger(), "Static Calibration: pitch: %f deg, roll: %f deg", init_calib_pitch *57.3, init_calib_roll*57.3 );
 
 
             // find pitch and roll from gravity vector
@@ -525,9 +695,10 @@ class INS : public rclcpp::Node
 
         }
 
-        void turnOnBiasEstimation(Eigen::Vector3d acceleration, Eigen::Vector3d angular_velocity){
+        void turnOnBiasEstimation(Eigen::Vector3d angular_velocity){
             angular_velocity_offset /= (float)turn_on_bias_estimation_period_;
             angular_velocity_offset += angular_velocity/(float)turn_on_bias_estimation_period_;
+            angular_velocity_offset *= (step-1);
             angular_velocity_offset /= step;
             angular_velocity_offset *= (float)turn_on_bias_estimation_period_;
             RCLCPP_INFO(get_logger(), "angular rate static calibration: : %f %f %f", angular_velocity_offset[0], angular_velocity_offset[1], angular_velocity_offset[2] );

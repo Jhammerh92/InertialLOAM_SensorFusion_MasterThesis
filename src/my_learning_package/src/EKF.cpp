@@ -80,6 +80,7 @@ class EKF : public rclcpp::Node
         rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr lidar_odometry_transformation_sub;
 
         rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odometry_pub;
+        rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr prediction_pub;
         rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub;
         rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr initial_pose_pub;
      
@@ -209,6 +210,8 @@ class EKF : public rclcpp::Node
         double measurement_time{};
         double process_time{};
 
+        double next_scan_time{};
+
         Eigen::Vector3d acceleration;
         Eigen::Vector3d angular_velocity;
 
@@ -316,6 +319,7 @@ class EKF : public rclcpp::Node
             lidar_odometry_transformation_sub = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>("/transformation/lidar", 100, std::bind(&EKF::transformationHandler, this, _1), options2);
             // keyframe_odom_sub = this->create_subscription<nav_msgs::msg::Odometry>("/odom_keyframe", 100, std::bind(&EKF::keyframeHandler, this, _1), options2);
             odometry_pub = this->create_publisher<nav_msgs::msg::Odometry>("/odom_kalman", 100);
+            prediction_pub = this->create_publisher<nav_msgs::msg::Odometry>("/kalman_prediction", 100);
             path_pub = this->create_publisher<nav_msgs::msg::Path>("/path_kalman", 100);
             initial_pose_pub = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("/initial_pose", 100);
             
@@ -729,7 +733,8 @@ class EKF : public rclcpp::Node
                                             orientation_quaternion.getY(),
                                             orientation_quaternion.getZ(),
                                             orientation_quaternion.getW());
-            acceleration = quat_eigen * acceleration; // if offset orientation is to be used apply it here
+            acceleration = (quat_eigen * acceleration); // if offset orientation is to be used apply it here
+            // acceleration[2] -= 9.833072;
             // RCLCPP_INFO(get_logger(), "acceleration rotated: %f %f %f", acceleration[0], acceleration[1], acceleration[2]);
 
             // subtract gravity
@@ -837,6 +842,10 @@ class EKF : public rclcpp::Node
                                               odom_message->pose.pose.orientation.z,
                                               odom_message->pose.pose.orientation.w);
 
+            // odom_message->header
+
+            // next_scan_time = 
+
             // measurement_covariance_pos = getCovariancePos(odom_message->pose.covariance);
             Eigen::Vector3d cov_diagonal = getCovarianceDiagonalPos(odom_message->pose.covariance);
             updateMeasurementCovariance(cov_diagonal);
@@ -905,7 +914,7 @@ class EKF : public rclcpp::Node
                 return;
             }
 
-            RCLCPP_INFO(get_logger(),"HERE?");
+            // RCLCPP_INFO(get_logger(),"HERE?");
 
             measurement_time = toSec(transform_message->header.stamp);
             runProcess(measurement_time); // runs process from imu buffer up till the input time;

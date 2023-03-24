@@ -254,7 +254,7 @@ class Backend : public rclcpp::Node
 
             new_cloud_ready = true;
             
-            RCLCPP_INFO(get_logger(), "cloud recieved");
+            // RCLCPP_INFO(get_logger(), "cloud recieved");
 
             // convert to pcl
             // save the cloud to all clouds            
@@ -284,7 +284,7 @@ class Backend : public rclcpp::Node
             odometry_pose_info->push_back(new_pose);
 
             new_pose_ready = true;
-            RCLCPP_INFO(get_logger(), "pose recieved");
+            // RCLCPP_INFO(get_logger(), "pose recieved");
         }
 
         // make function that checks odom and cloud ready bools to run and compares timestamps before saving cloud and pose, as these have to match each other
@@ -359,7 +359,7 @@ class Backend : public rclcpp::Node
             // build global cloud from odometry transforms and recordeded (keyframe) clouds
             // publish the cloud, maybe with a gate-timer to not hog bandwidth and memory
   
-            RCLCPP_INFO(get_logger(),"Publishing global map!");
+            // RCLCPP_INFO(get_logger(),"Publishing global map!");
             // RCLCPP_INFO(get_logger(),"number of clouds: %i", all_clouds.size());
             // RCLCPP_INFO(get_logger(),"number of poses: %i", odometry_pose_info->points.size());
             

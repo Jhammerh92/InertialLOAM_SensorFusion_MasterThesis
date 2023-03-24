@@ -29,12 +29,12 @@ find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(pcl_ros REQUIRED)
-find_package(pclomp REQUIRED)
+# find_package(pclomp REQUIRED)
 # uncomment the following section in order to fill in
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
-set(dependencies "std_msgs" "std_srvs" "rclcpp" "geometry_msgs" "sensor_msgs" "tf2" "tf2_geometry_msgs" "sensor_msgs" "pcl_conversions" "pcl_ros" "nav_msgs" "pclomp")
+set(dependencies "std_msgs" "std_srvs" "rclcpp" "geometry_msgs" "sensor_msgs" "tf2" "tf2_geometry_msgs" "sensor_msgs" "pcl_conversions" "pcl_ros" "nav_msgs")
 
 add_executable(hello_publisher src/hello_publisher.cpp)
 ament_target_dependencies(hello_publisher ${dependencies})
@@ -65,6 +65,9 @@ ament_target_dependencies(loam_backend ${dependencies})
 
 add_executable(ekf src/EKF.cpp)
 ament_target_dependencies(ekf ${dependencies})
+
+add_executable(ekf_ins src/EKF_INS.cpp)
+ament_target_dependencies(ekf_ins ${dependencies})
 
 add_executable(imu_filter src/IMUFilter.cpp)
 ament_target_dependencies(imu_filter ${dependencies})
@@ -104,6 +107,7 @@ install(TARGETS
   preprocessing
   loam_backend
   ekf
+  ekf_ins
   imu_filter
   ins
   # format_convert

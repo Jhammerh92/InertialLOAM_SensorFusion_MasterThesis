@@ -2,7 +2,11 @@ ins:
   ros__parameters:
     imu_dt: 0.01
     imu_topic: "/imu/data"
-    use_madgwick: false
     turn_on_bias_estimation_period: 0
-    gravity_estimation_period: 1000
+    use_madgwick: false
+    gravity_estimation_period: 10
+    g_acc: 0.0 #9.83
+    use_ficticiuos_force_correction: false # because of the offset from the ugv turning point/ CoM
+    use_kalman_bias_correction: false
+    predict_next_scan: true
     

@@ -82,6 +82,7 @@ private:
     std::deque<sensor_msgs::msg::PointCloud2> cloud_queue;
     sensor_msgs::msg::PointCloud2 current_cloud_msg;
 
+    double time_scan; // convert to rclcpp::Time?
     double time_scan_next; // convert to rclcpp::Time?
     // rclcpp::Time time_scan_next;
 
@@ -577,7 +578,7 @@ public:
     PointT undistortPoint(PointT pt, const Eigen::Quaterniond quat) {
         
         Eigen::Vector3d pt_i(pt.x, pt.y, pt.z);
-        Eigen::Vector3d pt_s = quat * pt_i; // should in theory also have to account for the offset between lidar and IMU here
+        Eigen::Vector3d pt_s = quat * pt_i; // should in theory also have to account for the offset between lidar and IMU here?
 
         PointT p_out;
         p_out.x = pt_s.x();
@@ -591,7 +592,8 @@ public:
     template <typename PointT>
     void undistortCloud(const boost::shared_ptr<pcl::PointCloud<PointT>> &cloud_in, boost::shared_ptr<pcl::PointCloud<PointT>> &cloud_out)
     {
-        double scan_time = cloud_out->points[cloud_in->points.size()-1].intensity - (int)cloud_out->points[cloud_in->points.size()-1].intensity;
+        double scan_dt = cloud_out->points[cloud_in->points.size()-1].intensity - (int)cloud_out->points[cloud_in->points.size()-1].intensity;
+        // RCLCPP_INFO(get_logger(), "scan dt undistortion: %f", scan_dt);
         // double point_dt = scan_time / cloud_in->points.size(); // should be the first thing of the preprocessing for this reason
 
         Eigen::Quaterniond q0 = Eigen::Quaterniond::Identity();
@@ -599,13 +601,14 @@ public:
 
         for (size_t i=0; i < cloud_in->points.size(); i++){
             //  double dt_i = point_dt * i;
-            double dt_i = cloud_out->points[i].intensity - (int)cloud_out->points[i].intensity;
-            double ratio_i = dt_i / scan_time;
+            double intensity = cloud_out->points[i].intensity;
+            double dt_i = intensity - (int)intensity;
+            double ratio_i = dt_i / scan_dt;
             if(ratio_i >= 1.0) {
                 ratio_i = 1.0;
             }
 
-            Eigen::Quaterniond quat_spheric_interp = q0.slerp(ratio_i, q_iMU);
+            Eigen::Quaterniond quat_spheric_interp = q0.slerp(1 - ratio_i, q_iMU.inverse()); // 1-ratio because the last points are the most distorted
 
             cloud_out->points[i] = undistortPoint(cloud_in->points[i], quat_spheric_interp);
 
@@ -614,20 +617,16 @@ public:
 
 
     template <typename PointT>
-    void imbedPointTime(const boost::shared_ptr<pcl::PointCloud<PointT>> &cloud_in, boost::shared_ptr<pcl::PointCloud<PointT>> &cloud_out){
-        double scan_time = 0.1;
-        double point_dt = scan_time / cloud_in->points.size(); // should be the first thing of the preprocessing for this reason
+    void embedPointTime(const boost::shared_ptr<pcl::PointCloud<PointT>> &cloud_in, boost::shared_ptr<pcl::PointCloud<PointT>> &cloud_out, const double scan_dt){
+        double scan_time = scan_dt;
+        // double scan_time = 0.1;
+        double point_dt = scan_time / cloud_in->points.size();
 
         for (size_t i=0; i < cloud_in->points.size(); i++){
 
-            double dt_i = point_dt * i;
-            // double ratio_i = dt_i / scan_time;
-            // if(ratio_i >= 1.0) {
-            //     ratio_i = 1.0;
-            // }
-
+            double dt_i = point_dt * (i+1); // +1 because the last point in the previous scan is considered t=0 therefore first(zeroth) point in this scan is at t=1*dt
+            // this also makes sure that the full scan_time is imbedded in the final point, and can be retrieved for later use. 
             cloud_out->points[i].intensity += dt_i;
-
         }
     }
 
@@ -641,6 +640,7 @@ public:
         }
         else
         {
+            time_scan = toSec(cloud_queue.front().header.stamp);
             current_cloud_msg = cloud_queue.front(); // puts the next cloud to variable current
             cloud_queue.pop_front();                 // removes element from the queue
 
@@ -662,7 +662,7 @@ public:
         #endif
 
         // imbed the scan time of the individual point to the intesity value which is then the integer part, and the time is the fractional part
-        imbedPointTime(lidar_cloud_in_no_normals, lidar_cloud_in_no_normals);
+        embedPointTime(lidar_cloud_in_no_normals, lidar_cloud_in_no_normals, time_scan_next - time_scan);
 
 
         // UNDISTORTION SHOULD BE THE FIRST PROCESSING STEP

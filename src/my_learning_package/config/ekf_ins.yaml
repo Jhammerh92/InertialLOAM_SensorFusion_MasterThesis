@@ -1,8 +1,9 @@
-ekf:
+ekf_ins:
   ros__parameters:
     relative_mode: false
+    
     imu_dt: 0.01 # TODO rewrite to also use timestamp dt when this value is 0.0
-    imu_step_delay: 10 # 125
+    imu_step_delay: 0 # 125
 
     # Q
     # process noise std
@@ -18,7 +19,7 @@ ekf:
     measurement_noise_yaw:   0.01
 
     # Q
-    process_noise_pos: 0.05 # 0.01> x >0.0007 
+    process_noise_pos: 0.2 # 0.01> x >0.0007 
     # process_noise_x: 0.001
     # process_noise_y: 0.001
     # process_noise_z: 0.001
