@@ -11,19 +11,20 @@ lidar_odometry:
     keyframe_threshold_fitness: 0.5
     keyframe_threshold_index: 0 # 0 means it is not used
     scan_matching_method: 0 # 0 ICP-p2pl, 1 GICP, 2 NDT-p2d
-    icp_max_iterations: 5 # 10-30
-    icp_max_coarse_iterations: 2 # 10-30
+    icp_max_iterations: 25 # 10-30
+    icp_max_coarse_iterations: 5 # 10-30
     icp_max_correspondence_distance: 0.001 # should be less than voxelsize of source
-    coarse_correspondence_factor: 100
+    coarse_correspondence_factor: 1000
     local_map_width: 20 # if 0 all previous keyframes are pushed to local map indefinitely
     local_map_init_frames_count: 20
     # use_inertial_constraint: false
     # use_wheel_constraint: false
     use_ins_guess: false
     use_preint_imu_guess: false
+    use_lidar_odometry_guess: false
     imu_topic: "/imu/data"
 
-    use_linear_undistortion: true
+    use_linear_undistortion: false
 
 
     translation_std_min_x: 0.01

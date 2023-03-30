@@ -536,7 +536,7 @@ class EKF : public rclcpp::Node
             measurement_covariance_z << cov_diagonal[2] * cov_diagonal[2];
         }
 
-        void updateOrientationQuaternionFromState()
+        void updateOrientationQuaternionFromEulerState()
         {
             // orientation_quaternion.setEuler(state_yaw[0], state_pitch[0], state_roll[0]);
             orientation_quaternion.setRPY(state_roll[0], state_pitch[0], state_yaw[0]); // this seems better, but still don't seem right
@@ -726,7 +726,7 @@ class EKF : public rclcpp::Node
 
             // convert acceleration input to world frame by rotating by the imu orientation
             // updateOrientationQuaternion();
-            updateOrientationQuaternionFromState();
+            updateOrientationQuaternionFromEulerState();
             // tf2::Matrix3x3 rot_mat(orientation_quaternion);
             // Eigen::Matrix3d rot_mat_eigen(rot_mat);
             Eigen::Quaterniond quat_eigen(orientation_quaternion.getX(),
@@ -771,7 +771,7 @@ class EKF : public rclcpp::Node
             
             // RCLCPP_INFO(get_logger(), "uncertaint_pitch = %f", uncertainty_pitch(0,0));
 
-            updateOrientationQuaternionFromState();
+            updateOrientationQuaternionFromEulerState();
 
             latestPoseInfo.qw = orientation_quaternion.getW();
             latestPoseInfo.qx = orientation_quaternion.getX();
@@ -864,7 +864,7 @@ class EKF : public rclcpp::Node
             // // POSITION
             measurementUpdatePosition(lidar_position);
 
-            updateOrientationQuaternionFromState();
+            updateOrientationQuaternionFromEulerState();
 
 
             RCLCPP_INFO(get_logger(), "Lidar measurement: pos = %f, %f %f", lidar_position[0], lidar_position[1], lidar_position[2]);
@@ -943,7 +943,7 @@ class EKF : public rclcpp::Node
 
                 measurementUpdateOrientation(madgwick_orientation_quaternion);
             }
-            updateOrientationQuaternionFromState();
+            updateOrientationQuaternionFromEulerState();
 
             // // POSITION
             // rotate translation

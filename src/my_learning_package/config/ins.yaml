@@ -3,10 +3,10 @@ ins:
     imu_dt: 0.01
     imu_topic: "/imu/data"
     turn_on_bias_estimation_period: 0
-    use_madgwick: false
+    use_madgwick_orientation: false
     gravity_estimation_period: 10
     g_acc: 0.0 #9.83
-    use_ficticiuos_force_correction: false # because of the offset from the ugv turning point/ CoM
-    use_kalman_bias_correction: false
-    predict_next_scan: true
+    use_ficticiuos_force_correction: true # because of the offset from the ugv turning point/ CoM
+    use_kalman_bias_correction: true
+    predict_next_scan: false
     

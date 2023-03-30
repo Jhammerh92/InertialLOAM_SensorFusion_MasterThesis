@@ -36,4 +36,4 @@ ekf_ins:
     # imu_topic: "/imu/data"
 
     print_states: true
-    use_madgwick_orientation: true
+    use_madgwick_orientation: false

@@ -298,6 +298,7 @@ class LidarOdometry : public rclcpp::Node
         bool use_wheel_constraint_{};
         bool use_ins_guess_{};
         bool use_preint_imu_guess_{};
+        bool use_lidar_odometry_guess_{};
         bool use_linear_undistortion_{};
 
         double ds_lc_voxel_size_ratio_;
@@ -370,6 +371,9 @@ class LidarOdometry : public rclcpp::Node
 
             declare_parameter("use_preint_imu_guess", false); 
             get_parameter("use_preint_imu_guess", use_preint_imu_guess_);
+
+            declare_parameter("use_lidar_odometry_guess", true); 
+            get_parameter("use_lidar_odometry_guess", use_lidar_odometry_guess_);
 
             declare_parameter("use_linear_undistortion", true); 
             get_parameter("use_linear_undistortion", use_linear_undistortion_);
@@ -1030,7 +1034,8 @@ class LidarOdometry : public rclcpp::Node
                 }
 
                 Eigen::Vector3d point_vector(point.x, point.y, point.z);
-                point_vector -= linear_translation * (1 - ratio_i);
+                // point_vector -= linear_translation * (1 - ratio_i);
+                point_vector += linear_translation * ratio_i;
 
                 point.x = point_vector.x();
                 point.y = point_vector.y();
@@ -1044,6 +1049,8 @@ class LidarOdometry : public rclcpp::Node
         {
             ins_relative.rotation = ins_pose.orientation.inverse() * ins_pose_new.orientation; 
             ins_pose.orientation = ins_pose_new.orientation;
+
+            ins_relative.translation = (ins_pose_new.position - ins_pose.position);
         }
 
         template <typename Derived>
@@ -1141,7 +1148,7 @@ class LidarOdometry : public rclcpp::Node
             K.block<3, 1>(0, 3) = keyframe_pose.position.cast<float>();
             // K.block<3, 1>(0, 3) = Eigen::Vector3f::Zero();
 
-            if (use_ins_guess_ && !imu_buffer.empty()){  // and with "ins_is_updated" -- need also to make guarentee that last ins msg has been recieved.
+            if (use_preint_imu_guess_ && !imu_buffer.empty()){  // and with "ins_is_updated" -- need also to make guarentee that last ins msg has been recieved.
                 preintegrateINSGuess();
                 preint_position.z() = 0.0;
                 init_guess.block<3, 3>(0, 0) = Eigen::Matrix3f((preint_quat).cast<float>());
@@ -1152,7 +1159,7 @@ class LidarOdometry : public rclcpp::Node
                 // init_guess.block<3, 1>(0, 3) = (average_translation).cast<float>();
                 init_guess(1,3) = 0.0;
                 init_guess(2,3) = - keyframe_pose.position.z();
-            }  else if (use_preint_imu_guess_){  // and with "ins_is_updated" -- need also to make guarentee that last ins msg has been recieved.
+            }  else if (use_ins_guess_ ){  // and with "ins_is_updated" -- need also to make guarentee that last ins msg has been recieved.
                 // RCLCPP_INFO(get_logger(), "INS guess used");
                 updateINSRelative();
 
@@ -1160,11 +1167,13 @@ class LidarOdometry : public rclcpp::Node
                 Eigen::Matrix3f rot_guess(( K.block<3, 3>(0, 0).inverse() * ins_rot));
 
                 init_guess.block<3, 3>(0, 0) = rot_guess;
-                init_guess.block<3, 1>(0, 3) = (registration_transformation.translation).cast<float>();
+                // init_guess.block<3, 1>(0, 3) = (ins_relative.translation).cast<float>();
+                init_guess.block<3, 1>(0, 3) = (ins_relative.translation).cast<float>();
                 // init_guess.block<3, 1>(0, 3) = (registration_transformation.translation + rot_guess*last_odometry_transformation.translation).cast<float>();
                 // init_guess.block<3, 1>(0, 3) = Eigen::Vector3f::Zero();
                 // init_guess.block<3, 1>(0, 3) = (average_translation).cast<float>();
-            } else {
+                init_guess(2,3) = - keyframe_pose.position.z();
+            } else if (use_lidar_odometry_guess_ ) {
                 RCLCPP_INFO(get_logger(), "Odometry guess used");
                 init_guess.block<3, 3>(0, 0) = Eigen::Matrix3f((registration_transformation.rotation * last_odometry_transformation.rotation).cast<float>());
                 init_guess.block<3, 1>(0, 3) = (registration_transformation.translation + last_odometry_transformation.translation).cast<float>();
@@ -1173,7 +1182,8 @@ class LidarOdometry : public rclcpp::Node
                 // init_guess.block<3, 1>(0, 3) = average_translation.cast<float>();
                 init_guess(1,3) = 0.0;
                 init_guess(2,3) = 0.0;
-            }
+            } 
+            // else just identity guess..
 
 
             publishGuessCloud(K*init_guess);
@@ -1596,17 +1606,19 @@ class LidarOdometry : public rclcpp::Node
             bool fitness = icp_fitness > keyframe_threshold_fitness_ && keyframe_threshold_fitness_ > 0.0;
             bool index = (int)latest_frame_idx > (keyframe_threshold_index_ + keyframe_poses.back().frame_idx -1 ) && keyframe_threshold_index_ > 0;
 
-            bool covariance_x = translation_std_x < 0.05;
-            bool covariance_y = translation_std_y < 0.05;
-            bool covariance_z = translation_std_z < 0.01;
+            bool covariance_x = translation_std_x < 0.1;
+            bool covariance_y = translation_std_y < 0.1;
+            bool covariance_z = translation_std_z < 0.05;
 
+            // if transformation has big covaraince it is not used as keyframe!
             bool good_covariance = (covariance_x && covariance_y && covariance_z);
 
-            good_covariance = true; // this is an override!
+            // good_covariance = true; // this is an override!
             if (!good_covariance){
                 registration_transformation.rotation = Eigen::Quaterniond::Identity();
                 registration_transformation.translation = Eigen::Vector3d::Zero();
             }
+
 
             return ((dist || ang || fitness ) && good_covariance) || index;
         }

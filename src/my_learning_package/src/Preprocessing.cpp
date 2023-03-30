@@ -608,7 +608,8 @@ public:
                 ratio_i = 1.0;
             }
 
-            Eigen::Quaterniond quat_spheric_interp = q0.slerp(1 - ratio_i, q_iMU.inverse()); // 1-ratio because the last points are the most distorted
+            // Eigen::Quaterniond quat_spheric_interp = q0.slerp(1 - ratio_i, q_iMU.inverse()); // 1-ratio because the last points are the most distorted
+            Eigen::Quaterniond quat_spheric_interp = q0.slerp(ratio_i, q_iMU); // 1-ratio because the last points are the most distorted
 
             cloud_out->points[i] = undistortPoint(cloud_in->points[i], quat_spheric_interp);
 

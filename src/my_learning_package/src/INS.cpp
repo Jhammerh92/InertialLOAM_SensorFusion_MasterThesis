@@ -63,6 +63,23 @@ using std::placeholders::_1;
 // typedef pcl::PointXYZINormal PointType; // need to calculate and assign normals
 // typedef pcl::PointXYZINormal PointType; // need to calculate and assign normals
 
+struct IMUwrench
+{
+    Eigen::Vector3d acc;
+    Eigen::Vector3d ang;
+    double time;
+};
+
+struct INSstate
+{
+    Eigen::Vector3d acc;
+    Eigen::Vector3d vel;
+    Eigen::Vector3d pos;
+    Eigen::Quaterniond ori;
+    double time;
+    IMUwrench bias;
+};
+
 class INS : public rclcpp::Node
 {
     private:
@@ -102,6 +119,7 @@ class INS : public rclcpp::Node
         double scan_dt{};
         double scan_timestamp{};
         double process_time{};
+        double prediction_time{};
 
         double calibration_time{};
         
@@ -125,6 +143,9 @@ class INS : public rclcpp::Node
         Eigen::Vector3d acceleration_post;
         Eigen::Vector3d velocity;
         Eigen::Vector3d position;
+
+        Eigen::Vector3d omega;
+        Eigen::Vector3d alpha;
  
 
         Eigen::Vector3d angular_velocity;
@@ -152,6 +173,13 @@ class INS : public rclcpp::Node
         deque<double> g_buffer;
         deque<Eigen::Vector3d> g_vec_buffer;
 
+        deque<IMUwrench> bias_buffer;
+        deque<IMUwrench> predict_buffer;  // the inputs used in the prediction step that need to be reapplied from the anchor with corrected a bias
+        INSstate prediction_anchor;
+        IMUwrench previous_bias;
+        IMUwrench current_bias;
+        
+
         deque<sensor_msgs::msg::Imu::SharedPtr> imu_delay_buffer;
 
         deque<sensor_msgs::msg::Imu::SharedPtr> imu_buffer;
@@ -165,7 +193,7 @@ class INS : public rclcpp::Node
         int gravity_estimation_period_;
 
         bool print_states_{};
-        bool use_madgwick_{};
+        bool use_madgwick_orientation_{};
         bool use_ficticiuos_force_correction_{};
         bool use_kalman_bias_correction_{};
         bool predict_next_scan_{};
@@ -203,8 +231,8 @@ class INS : public rclcpp::Node
             // declare_parameter("print_states", true);
             // get_parameter("print_states", print_states_);
 
-            declare_parameter("use_madgwick", false);
-            get_parameter("use_madgwick", use_madgwick_);
+            declare_parameter("use_madgwick_orientation", false);
+            get_parameter("use_madgwick_orientation", use_madgwick_orientation_);
 
             declare_parameter("use_ficticiuos_force_correction", false);
             get_parameter("use_ficticiuos_force_correction", use_ficticiuos_force_correction_);
@@ -248,9 +276,32 @@ class INS : public rclcpp::Node
             
 
             initializeArrays();
+            
 
         }
         ~INS(){}
+
+        void setPredictionAnchor()
+        {
+            prediction_anchor.acc = acceleration;
+            prediction_anchor.vel = velocity;
+            prediction_anchor.pos = position;
+            prediction_anchor.time = process_time;
+            prediction_anchor.ori = orientation;
+            // prediction_anchor.bias.acc = acceleration;
+            // prediction_anchor.bias.ang = angular_velocity;
+            prediction_anchor.bias = current_bias;
+        }
+
+        void getPredictionAnchor()
+        {
+            acceleration = prediction_anchor.acc;
+            velocity = prediction_anchor.vel;
+            position = prediction_anchor.pos;
+            // process_time = prediction_anchor.time;
+            orientation = prediction_anchor.ori;
+            current_bias = prediction_anchor.bias;
+        }
 
         void initializeArrays()
         {   
@@ -275,6 +326,14 @@ class INS : public rclcpp::Node
             angular_velocity_bias << 0.0,0.0,0.0;
             angular_velocity_offset << 0.0,0.0,0.0;
 
+
+            omega << 0.0,0.0,0.0;
+            alpha << 0.0,0.0,0.0;
+
+
+            current_bias.acc = acceleration_bias;
+            current_bias.ang = angular_velocity_bias;
+
             orientation = Eigen::Quaterniond::Identity();
             orientation_dt = Eigen::Quaterniond::Identity();
             // orientation_post = Eigen::Quaterniond(1.0, 0.0, 0.0, 0.0);
@@ -283,6 +342,8 @@ class INS : public rclcpp::Node
 
 
             INS_odometry.child_frame_id = "ins";
+
+            setPredictionAnchor();
 
         }
 
@@ -295,15 +356,25 @@ class INS : public rclcpp::Node
         }
 
         void biasHandler(const geometry_msgs::msg::WrenchStamped::SharedPtr bias_msg){
+
+            IMUwrench new_bias;
+            Eigen::Vector3d acc_bias;
+            Eigen::Vector3d ang_bias;
             // RCLCPP_INFO(get_logger(), "bias recieved!");
-            if (use_kalman_bias_correction_){
-                acceleration_bias.x() = bias_msg->wrench.force.x;
-                acceleration_bias.y() = bias_msg->wrench.force.y;
-                acceleration_bias.z() = bias_msg->wrench.force.z;
-            }
-            angular_velocity_bias.x() = bias_msg->wrench.torque.x;
-            angular_velocity_bias.y() = bias_msg->wrench.torque.y;
-            angular_velocity_bias.z() = bias_msg->wrench.torque.z;
+            // if (use_kalman_bias_correction_){
+            acc_bias.x() = bias_msg->wrench.force.x;
+            acc_bias.y() = bias_msg->wrench.force.y;
+            acc_bias.z() = bias_msg->wrench.force.z;
+            // }
+            ang_bias.x() = bias_msg->wrench.torque.x;
+            ang_bias.y() = bias_msg->wrench.torque.y;
+            ang_bias.z() = bias_msg->wrench.torque.z;
+
+            new_bias.acc = acc_bias;
+            new_bias.ang = ang_bias;
+            new_bias.time = toSec(bias_msg->header.stamp);
+
+            bias_buffer.push_back(new_bias);
         }
 
         void odomHandler(const nav_msgs::msg::Odometry::SharedPtr odom_data)
@@ -320,10 +391,11 @@ class INS : public rclcpp::Node
             //                           odom_data->twist.twist.linear.z);
 
             // correctINSPose(position, lidar_vel);
+            // saveCorrectionPose(position, lidar_vel);
+
+            processINS(scan_timestamp);
             if (predict_next_scan_)
-                processINS(scan_timestamp + scan_dt);
-            else
-                processINS(scan_timestamp);
+                processINSPrediction(scan_timestamp + scan_dt);
         }
 
         double toSec(builtin_interfaces::msg::Time header_stamp)
@@ -334,8 +406,22 @@ class INS : public rclcpp::Node
             return nanoseconds * 1e-9;
         }
 
+        void getCurrentBias(double cutoff_time)
+        {
+            previous_bias = current_bias;
+            while (current_bias.time < cutoff_time && !bias_buffer.empty()) {
+                current_bias = bias_buffer.front();
+                bias_buffer.pop_front();
+            }
+            RCLCPP_INFO(get_logger(), "Current Bias acc: %f %f %f ang %f %f %f", current_bias.acc.x(), current_bias.acc.y(), current_bias.acc.z(), current_bias.ang.x(), current_bias.ang.y(), current_bias.ang.z() );
+
+        }
+
         void processINS(double cutoff_time)
         {
+            getCurrentBias(process_time);
+            // predict_buffer.clear();
+
             while (process_time <= cutoff_time && !imu_buffer.empty()){
 
                 delayed_imu_data = imu_buffer.front();
@@ -343,16 +429,10 @@ class INS : public rclcpp::Node
 
                 // RCLCPP_INFO_ONCE(get_logger(), "INS First imu msg recieved..");
                 step++;
-                // put data into buffer back
-                // imu_delay_buffer.push_back(imu_data);
-
-                // if (step < imu_step_delay_){ // if step is less than imu_step_delay return
-                //     return;
-                // }
-
 
                 INS_odometry.header = delayed_imu_data->header;
                 INS_odometry.header.frame_id = "odom";
+                process_time = toSec(delayed_imu_data->header.stamp);
 
                 // imu_data_header = delayed_imu_data->header;
                 // filtered_imu_data = *delayed_imu_data;
@@ -370,6 +450,13 @@ class INS : public rclcpp::Node
                                                 delayed_imu_data->orientation.y, 
                                                 delayed_imu_data->orientation.z);
 
+                IMUwrench imu_wrench_prediction_step;
+                imu_wrench_prediction_step.acc = acceleration_in;
+                imu_wrench_prediction_step.ang = angular_velocity;
+                imu_wrench_prediction_step.time = process_time;
+                predict_buffer.push_back(imu_wrench_prediction_step);
+                
+ 
 
                 if (step < turn_on_bias_estimation_period_){
                     turnOnBiasEstimation( angular_velocity);
@@ -377,26 +464,100 @@ class INS : public rclcpp::Node
                 
 
 
-                if (use_madgwick_){
+                if (use_madgwick_orientation_){
                     updateOrientation(orientation_madgwick);
                 } else {
-                    if (step < 2){
+                    if (step <= 10){ // use the madgwick found orientation as the initial orientation
                         initOrientationMadgwick(orientation_madgwick);
+                    } else {
+                        updateOrientation(angular_velocity);
                     }
-                    updateOrientation(angular_velocity);
                 }
                 updateAcceleration(acceleration_in);
                 updateVelocity();
-                // updatePosition();
+                updatePosition();
 
-                if (step < gravity_estimation_period_*10){
+                if (step < gravity_estimation_period_){
                     updateGravityCalibration(acceleration_in, toSec(delayed_imu_data->header.stamp));
                 }
 
-                publishINS( );
+                publishINS();
 
 
-                process_time = toSec(imu_buffer.front()->header.stamp);
+            }
+            setPredictionAnchor();
+        }
+
+        void processINSPrediction(double cutoff_time)
+        {
+            getPredictionAnchor();
+            getCurrentBias(process_time);
+            IMUwrench imu;
+            while (!predict_buffer.empty()){
+                imu = predict_buffer.front();
+                predict_buffer.pop_front();
+                Eigen::Vector3d acc_in = imu.acc;
+                Eigen::Vector3d ang_in = imu.ang;
+
+                // if (use_madgwick_orientation_){
+                    // updateOrientation(orientation_madgwick);
+                // } else {
+                updateOrientation(ang_in);
+                // }
+                updateAcceleration(acc_in);
+                updateVelocity();
+                updatePosition();
+                publishINS(); // make seperate predict topic?
+            }
+
+            while (process_time <= cutoff_time && !imu_buffer.empty()){
+
+                delayed_imu_data = imu_buffer.front();
+                imu_buffer.pop_front();
+
+                RCLCPP_INFO(get_logger(), "Predicting..");
+
+                INS_odometry.header = delayed_imu_data->header;
+                INS_odometry.header.frame_id = "odom";
+                process_time = toSec(delayed_imu_data->header.stamp);
+
+                // imu_data_header = delayed_imu_data->header;
+                // filtered_imu_data = *delayed_imu_data;
+
+                Eigen::Vector3d acceleration_in(delayed_imu_data->linear_acceleration.x,
+                                                delayed_imu_data->linear_acceleration.y,
+                                                delayed_imu_data->linear_acceleration.z);
+
+                angular_velocity << delayed_imu_data->angular_velocity.x,
+                                    delayed_imu_data->angular_velocity.y,
+                                    delayed_imu_data->angular_velocity.z;
+
+                Eigen::Quaterniond orientation_madgwick(delayed_imu_data->orientation.w,
+                                                delayed_imu_data->orientation.x,
+                                                delayed_imu_data->orientation.y, 
+                                                delayed_imu_data->orientation.z);
+
+                IMUwrench imu_wrench_prediction_step;
+                imu_wrench_prediction_step.acc = acceleration_in;
+                imu_wrench_prediction_step.ang = angular_velocity;
+                imu_wrench_prediction_step.time = process_time;
+                predict_buffer.push_back(imu_wrench_prediction_step);
+                
+ 
+
+                if (use_madgwick_orientation_){
+                    updateOrientation(orientation_madgwick);
+                } else {
+                    updateOrientation(angular_velocity);
+
+                }
+                updateAcceleration(acceleration_in);
+                updateVelocity();
+                updatePosition();
+
+
+                // publishINS( ); // make seperate predict topic?
+
             }
         }
 
@@ -447,25 +608,38 @@ class INS : public rclcpp::Node
             
             orientation_post = orientation;
             angular_acceleration = (previous_angular_velocity - angular_velocity) / imu_dt_;
-            Eigen::Vector3d average_angular_velocity = 0.5 * (previous_angular_velocity + angular_velocity) - angular_velocity_bias - angular_velocity_offset;
+            Eigen::Vector3d average_angular_velocity = 0.5 * ((previous_angular_velocity - previous_bias.ang) + (angular_velocity - current_bias.ang)) - angular_velocity_offset;
             // first half is for average, second is dq_dt = 1/2 q w
             // but this should be taken care of in deltaQ??, ran two instances of madgwick that sent the rate twice..
             orientation_dt = deltaQ(average_angular_velocity * imu_dt_);
             orientation *= orientation_dt;
             previous_angular_velocity = angular_velocity; // the previos bias is baked in
+
+
+            Eigen::Vector3d omega_old(omega);
+            Eigen::AngleAxisd axangomega(orientation_dt);
+            omega = axangomega.axis();
+            omega *= axangomega.angle() / imu_dt_;
+
+            alpha = (omega - omega_old);
+
         }
 
         Eigen::Vector3d calculateFicticiousAcceleration(){
-            Eigen::Vector3d omega(angular_velocity);
+            
+            // RCLCPP_INFO(get_logger(), "omega %f %f %f", omega.x(), omega.y(), omega.z() );
+            // RCLCPP_INFO(get_logger(), "alpha %f %f %f", alpha.x(), alpha.y(), alpha.z() );
+
             // no coriolis force as the imu is not moving relative to the ugv/robot
             Eigen::Vector3d centrifugal_acc;
             Eigen::Vector3d euler_acc; // requires angular acc
             centrifugal_acc = omega.cross(omega.cross(ego_to_imu_offset));
-            euler_acc = angular_acceleration.cross(ego_to_imu_offset);
-            RCLCPP_INFO(get_logger(), "centrifugal acc %f %f %f", centrifugal_acc.x(), centrifugal_acc.y(), centrifugal_acc.z() );
-            RCLCPP_INFO(get_logger(), "euler acc %f %f %f", euler_acc.x(), euler_acc.y(), euler_acc.z() );
+            euler_acc = alpha.cross(ego_to_imu_offset);
+            // RCLCPP_INFO(get_logger(), "centrifugal acc %f %f %f", centrifugal_acc.x(), centrifugal_acc.y(), centrifugal_acc.z() );
+            // RCLCPP_INFO(get_logger(), "euler acc %f %f %f", euler_acc.x(), euler_acc.y(), euler_acc.z() );
             // euler_acc = - 
             return centrifugal_acc + euler_acc;
+            // return centrifugal_acc; 
         }
 
         void updateAcceleration(Eigen::Vector3d acc_in)
@@ -474,15 +648,30 @@ class INS : public rclcpp::Node
             // if (step == 1){
             //     acceleration_post = avg_quat*acc_in;
             // } 
-            Eigen::Vector3d ficticious_acc(0.0,0.0,0.0);
+            Eigen::Vector3d ficticious_acc(0.0, 0.0, 0.0);
             if (use_ficticiuos_force_correction_){
                 ficticious_acc = calculateFicticiousAcceleration();
             } 
 
+            
             gravity_vector << 0.0, 0.0, -g_acc_;
-            acceleration =  avg_quat *(acc_in - ficticious_acc - acceleration_bias) ; // ficticious forces are in the body frame.
+            acceleration =  (acc_in - ficticious_acc ) ; // ficticious forces are in the body frame.
+            
+            
             // acceleration = orientation*(acc_in - acceleration_bias);
-            acceleration =  acceleration + gravity_vector; // gravity vector is in world frame.
+            acceleration =  avg_quat * acceleration - current_bias.acc + gravity_vector; // gravity vector is in world frame.
+
+            // Just false...
+            // the rejection vector between dv
+            // Eigen::Vector3d centrifugal_acc_curve_path(0.0,0.0,0.0);
+            // if (velocity.norm() > 0.0){
+            //     Eigen::Vector3d dv(acceleration * imu_dt_);
+            //     Eigen::Vector3d proj = (velocity) * (velocity+dv).dot(velocity) /( velocity.dot(velocity));
+            //     centrifugal_acc_curve_path = (velocity+dv - proj);
+            // }
+            // RCLCPP_INFO(get_logger(), "centrifugal acc curved path %f %f %f", centrifugal_acc_curve_path.x(), centrifugal_acc_curve_path.y(), centrifugal_acc_curve_path.z() );
+            // acceleration -= avg_quat.inverse() * centrifugal_acc_curve_path;
+
         }
 
         void updateVelocity()
@@ -517,8 +706,13 @@ class INS : public rclcpp::Node
             INS_odometry.twist.twist.angular.y = angular_velocity[1];
             INS_odometry.twist.twist.angular.z = angular_velocity[2];
 
-            // covariance at some point here
-            // ...
+            
+            vector<double> cov_diag{0.5,0.5,0.5, 0.1,0.1,0.1};
+            Eigen::MatrixXd cov_mat = createCovarianceEigen(cov_diag);
+            // Eigen::Matrix3d rot_mat = last_odometry_pose.block<3,3>(0,0);
+            // Eigen::Matrix3d rot_mat(Eigen::Quaterniond(latestPoseInfo.qw, latestPoseInfo.qx, latestPoseInfo.qy, latestPoseInfo.qz ));
+            // rotateCovMatrix(cov_mat, rot_mat);
+            setCovariance(INS_odometry.pose.covariance, cov_mat);
 
             ins_pub->publish(INS_odometry);
 
@@ -534,7 +728,46 @@ class INS : public rclcpp::Node
 
         }
 
-        void correctINSPose(Eigen::Vector3d position_, Eigen::Vector3d velocity_){
+        Eigen::MatrixXd createCovarianceEigen(vector<double> cov_diag)
+        {
+            Eigen::MatrixXd cov_mat(6,6);
+            cov_mat.fill(0.0);
+            for (int i=0 ; i < 6; i++){
+                cov_mat(i*6 + i) = cov_diag[i];
+            }
+
+            return cov_mat;
+        }
+
+        void setCovariance(array<double, 36> &cov, vector<double> cov_diag)
+        // assumes a 6x6 covariance array ie. size 36
+        {
+            for (int i=0 ; i < 6; i++){
+                cov[i*6 + i] = cov_diag[i];
+            }
+
+        }
+
+        void setCovariance(array<double, 36> &cov, Eigen::MatrixXd cov_mat)
+        // assumes a 6x6 covariance array ie. size 36
+        {
+            for (int i=0 ; i < 36; i++){
+                double value = cov_mat(i);
+                if (value < 0.0) {
+                    value = 0.0;
+                }
+                cov[i] = value; // no negative values
+            }
+
+        }
+        
+        void saveCorrectionPose(Eigen::Vector3d position_, Eigen::Vector3d velocity_)
+        {
+
+        }
+
+        void correctINSPose(Eigen::Vector3d position_, Eigen::Vector3d velocity_)
+        {
             // update position and velocity from the kalman filter
             
             position = position_;
@@ -572,7 +805,7 @@ class INS : public rclcpp::Node
                 }
                 average_g_vec /= (float)n ;
                 Eigen::Vector3d average_g_norm = average_g_vec.normalized();
-                double average_g = average_g_vec.norm();
+                // double average_g = average_g_vec.norm();
 
                 double displacement_from_gravity = position.dot(average_g_norm);
                 // double displacement_from_gravity = position.norm();

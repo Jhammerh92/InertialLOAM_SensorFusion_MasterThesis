@@ -605,7 +605,7 @@ class EKF_INS : public rclcpp::Node
             // measurement_covariance_z << cov_diagonal[2] * cov_diagonal[2];
         }
 
-        void updateOrientationQuaternionFromState()
+        void updateOrientationQuaternionFromEulerState()
         {
             // orientation_quaternion.setEuler(state_yaw[0], state_pitch[0], state_roll[0]);
             orientation_quaternion.setRPY(state_roll[0], state_pitch[0], state_yaw[0]); // this seems better, but still don't seem right
@@ -749,7 +749,13 @@ class EKF_INS : public rclcpp::Node
             // nav_msgs::msg::Odometry::SharedPtr ins_msg = ins_buffer.front();
             // ins_time = toSec(ins_msg->header.stamp);
             RCLCPP_INFO(get_logger(), "syncing INS");
-            while (ins_time < cutoff_time && !ins_buffer.empty()){
+            while (ins_time + imu_dt_ < cutoff_time ){
+                // while(ins_buffer.empty()){
+                //     RCLCPP_INFO_ONCE(get_logger(), "waiting for INS");
+                if (ins_buffer.empty())
+                    break;
+                    RCLCPP_INFO_ONCE(get_logger(), "empty INS buffer");
+                // }
                 nav_msgs::msg::Odometry::SharedPtr ins_msg = ins_buffer.front();
                 // RCLCPP_INFO(get_logger(), "loop test INS");
 
@@ -765,6 +771,11 @@ class EKF_INS : public rclcpp::Node
                 ins_orientation.setX(ins_msg->pose.pose.orientation.x);
                 ins_orientation.setY(ins_msg->pose.pose.orientation.y);
                 ins_orientation.setZ(ins_msg->pose.pose.orientation.z);
+
+                measurement_covariance_ins = getCovariancePos(ins_msg->pose.covariance);
+                // measurement_covariance_ins_ori = getCovarianceOri(ins_msg->pose.covariance);
+
+                kalman_stamp = ins_msg->header.stamp;
                 ins_time = toSec(ins_msg->header.stamp);
                 ins_buffer.pop_front();
             }
@@ -775,8 +786,8 @@ class EKF_INS : public rclcpp::Node
 
         void runProcess(double cutoff_time)
         {   
-            while (process_time <= cutoff_time && !imu_buffer.empty()){
-                RCLCPP_INFO(get_logger(), "updating process to measurement.. cutoff: %f, current process time: %f",cutoff_time, process_time);
+            // RCLCPP_INFO(get_logger(), "updating process to measurement.. cutoff: %f, current process time: %f",cutoff_time, process_time);
+            while ((process_time < cutoff_time) && !imu_buffer.empty()){
                 
                 step++;
                 // if (step < imu_step_delay_){ // if step is less than imu_step_delay return
@@ -785,7 +796,10 @@ class EKF_INS : public rclcpp::Node
 
                 // get data from buffer front
                 sensor_msgs::msg::Imu::SharedPtr delayed_imu_data = imu_buffer.front();
+                kalman_stamp = delayed_imu_data->header.stamp;
                 imu_buffer.pop_front();
+                process_time = toSec(imu_buffer.front()->header.stamp); // get time stamp of next to compare with cutoff.
+
 
                 // process_time = toSec(delayed_imu_data->header.stamp);
 
@@ -811,8 +825,6 @@ class EKF_INS : public rclcpp::Node
                 // RCLCPP_INFO(get_logger(), "recieved madgwick pose roll: %f pitch: %f yaw: %f", roll*57.3, pitch*57.3, yaw*57.3);
 
                 processUpdate();
-                process_time = toSec(imu_buffer.front()->header.stamp); // get time stamp of next to compare with cutoff.
-                kalman_stamp = imu_buffer.front()->header.stamp;
                 // RCLCPP_INFO(get_logger(),"Where's the poop?");
             }
         }
@@ -832,7 +844,7 @@ class EKF_INS : public rclcpp::Node
 
             // convert acceleration input to world frame by rotating by the imu orientation
             // updateOrientationQuaternion();
-            updateOrientationQuaternionFromState();
+            updateOrientationQuaternionFromEulerState();
             // tf2::Matrix3x3 rot_mat(orientation_quaternion);
             // Eigen::Matrix3d rot_mat_eigen(rot_mat);
             Eigen::Quaterniond quat_eigen(orientation_quaternion.getX(),
@@ -879,7 +891,7 @@ class EKF_INS : public rclcpp::Node
             
             // RCLCPP_INFO(get_logger(), "uncertaint_pitch = %f", uncertainty_pitch(0,0));
 
-            updateOrientationQuaternionFromState();
+            updateOrientationQuaternionFromEulerState();
 
             latestPoseInfo.qw = orientation_quaternion.getW();
             latestPoseInfo.qx = orientation_quaternion.getX();
@@ -904,6 +916,18 @@ class EKF_INS : public rclcpp::Node
             for (int i=0 ; i < 9; i++){
                 // RCLCPP_INFO(get_logger(),"%i, %f", pos_cov_array_idx[i], cov_msg[pos_cov_array_idx[i]]);
                 cov_mat(i) = cov_msg[pos_cov_array_idx[i]] ;
+            }
+
+            return cov_mat;
+        }
+
+        Eigen::Matrix3d getCovarianceOri(std::array<double, 36> &cov_msg)
+        {
+            vector<int> pos_cov_array_idx{0,1,2,6,7,8,12,13,14};
+            Eigen::Matrix3d cov_mat;
+            for (int i=0 ; i < 9; i++){
+                // RCLCPP_INFO(get_logger(),"%i, %f", pos_cov_array_idx[i], cov_msg[pos_cov_array_idx[i]]);
+                cov_mat(i) = cov_msg[pos_cov_array_idx[i]+ 21] ;
             }
 
             return cov_mat;
@@ -942,7 +966,7 @@ class EKF_INS : public rclcpp::Node
 
             // process imu up till the measurement time step to make the state up to date for the incoming measurement
             measurement_time = toSec(odom_message->header.stamp);
-            runProcess(measurement_time); // runs process from imu buffer up till the input time;
+            // runProcess(measurement_time); // runs process from imu buffer up till the input time;
             // RCLCPP_INFO(get_logger(), "test INS");
 
             // RCLCPP_INFO(get_logger(),"What happens? %i", imu_buffer.size());
@@ -972,15 +996,15 @@ class EKF_INS : public rclcpp::Node
             if (use_madgwick_orientation_){
                 measurementUpdateOrientation(madgwick_orientation_quaternion);
             } else {
+                measurementUpdateINSOri(ins_orientation);
                 measurementUpdateOrientation(lidar_orientation);
-                // measurementUpdateINSOri();
             }
 
             // // POSITION
-            // measurementUpdateINSPosVel();
+            measurementUpdateINSPosVel();
             measurementUpdatePosition(lidar_position);
 
-            updateOrientationQuaternionFromState();
+            updateOrientationQuaternionFromEulerState();
 
 
             RCLCPP_INFO(get_logger(), "Lidar measurement: pos = %f, %f %f", lidar_position[0], lidar_position[1], lidar_position[2]);
@@ -1064,7 +1088,7 @@ class EKF_INS : public rclcpp::Node
 
                 measurementUpdateOrientation(madgwick_orientation_quaternion);
             }
-            updateOrientationQuaternionFromState();
+            updateOrientationQuaternionFromEulerState();
 
             // // POSITION
             // rotate translation
@@ -1196,7 +1220,7 @@ class EKF_INS : public rclcpp::Node
             // RCLCPP_INFO(get_logger(), "HPHt2 %f %f %f", HPHt.col(1)[0], HPHt.col(1)[1], HPHt.col(1)[2]);
             // RCLCPP_INFO(get_logger(), "HPHt3 %f %f %f", HPHt.col(2)[0], HPHt.col(2)[1], HPHt.col(2)[2]);
             // print state
-            RCLCPP_INFO(get_logger(),"state: %f %f %f %f %f %f %f %f %f", state_pos(0), state_pos(1), state_pos(2), state_pos(3), state_pos(4), state_pos(5), state_pos(6), state_pos(7), state_pos(8) );
+            
         }
 
         void measurementUpdateTranslation(Eigen::Vector3d translation)
@@ -1245,9 +1269,9 @@ class EKF_INS : public rclcpp::Node
 
             double yaw_innovation = yaw  - H_ori * state_yaw;
             
-            RCLCPP_INFO(get_logger(), "measured yaw: %f", yaw*57.3 );
-            RCLCPP_INFO(get_logger(), "current yaw: %f", state_yaw[0]*57.3 );
-            RCLCPP_INFO(get_logger(), "yaw innovation before: %f", yaw_innovation*57.3 );
+            RCLCPP_INFO(get_logger(), "measured RPY: %f %f %f", roll*57.3, pitch*57.3, yaw*57.3 );
+            RCLCPP_INFO(get_logger(), "current RPY: %f %f %f", state_roll[0]*57.3, state_pitch[0]*57.3, state_yaw[0]*57.3 );
+            // RCLCPP_INFO(get_logger(), "yaw innovation before: %f", yaw_innovation*57.3 );
             if (yaw_innovation >= M_PI){
                 yaw_innovation -= M_PI;
                 // yaw_innovation *= -1.0;
@@ -1255,7 +1279,43 @@ class EKF_INS : public rclcpp::Node
                 yaw_innovation += M_PI;
                 // yaw_innovation *= -1.0;
             }
-            RCLCPP_INFO(get_logger(), "yaw innovation after: %f", yaw_innovation*57.3 );
+            // RCLCPP_INFO(get_logger(), "yaw innovation after: %f", yaw_innovation*57.3 );
+            // only yaw is expected to have crossover error else the object is upside down..
+
+            // update state with kalman gain
+            state_roll  += gain_roll  * (roll  - H_ori * state_roll);
+            state_pitch += gain_pitch * (pitch - H_ori * state_pitch); 
+            state_yaw   += gain_yaw   * yaw_innovation; // <-- YAW CROSSOVER ERROR HERE ! see note at top of function
+
+            // recalculate uncertainty after measurement
+            uncertainty_roll  = (Eigen::Matrix2d::Identity() - gain_roll  * H_ori) * uncertainty_roll ;
+            uncertainty_pitch = (Eigen::Matrix2d::Identity() - gain_pitch * H_ori) * uncertainty_pitch;
+            uncertainty_yaw   = (Eigen::Matrix2d::Identity() - gain_yaw   * H_ori) * uncertainty_yaw  ;
+        }
+
+        void measurementUpdateINSOri(tf2::Quaternion orientation)
+        {
+            orientationQuaternionToEuler(orientation); // updates values roll, pitch, and yaw from the input quaternion
+            limitEulerAngles();
+            // ORIENTATION
+            // update kalman gain
+            gain_roll   = uncertainty_roll  * H_ori_T * (H_ori * uncertainty_roll  * H_ori_T + measurement_noise_roll ).inverse(); 
+            gain_pitch  = uncertainty_pitch * H_ori_T * (H_ori * uncertainty_pitch * H_ori_T + measurement_noise_pitch).inverse(); 
+            gain_yaw    = uncertainty_yaw   * H_ori_T * (H_ori * uncertainty_yaw   * H_ori_T + measurement_noise_yaw  ).inverse(); 
+
+            double yaw_innovation = yaw  - H_ori * state_yaw;
+            
+            RCLCPP_INFO(get_logger(), "INS measured RPY: %f %f %f", roll*57.3, pitch*57.3, yaw*57.3 );
+            RCLCPP_INFO(get_logger(), "current RPY: %f %f %f", state_roll[0]*57.3, state_pitch[0]*57.3, state_yaw[0]*57.3 );
+            // RCLCPP_INFO(get_logger(), "yaw innovation before: %f", yaw_innovation*57.3 );
+            if (yaw_innovation >= M_PI){
+                yaw_innovation -= M_PI;
+                // yaw_innovation *= -1.0;
+            } else if (yaw_innovation <= - M_PI){
+                yaw_innovation += M_PI;
+                // yaw_innovation *= -1.0;
+            }
+            // RCLCPP_INFO(get_logger(), "yaw innovation after: %f", yaw_innovation*57.3 );
             // only yaw is expected to have crossover error else the object is upside down..
 
             // update state with kalman gain
@@ -1520,14 +1580,14 @@ class EKF_INS : public rclcpp::Node
 
                 
 
-                RCLCPP_INFO(get_logger(), "update: pos state = %f, %f, %f, vel = %f, %f, %f, bias = %f %f %f", state_pos(0), state_pos(1), state_pos(2), state_pos(3), state_pos(4), state_pos(5), state_pos(6), state_pos(7), state_pos(8));
-                // RCLCPP_INFO(get_logger(), "update: pos state = %f, %f, %f", state_x(0), state_y(0), state_z(0));
-                // RCLCPP_INFO(get_logger(), "update: pos vel = %f, %f, %f, ", state_x(1), state_y(1), state_z(1));
-                // RCLCPP_INFO(get_logger(), "update: pos bias = %f %f %f", state_x(2), state_y(2), state_z(2));
-                // RCLCPP_INFO(get_logger(), "update: pos uncertainty = %f, %f, %f", sqrt(uncertainty_x(0,0)), sqrt(uncertainty_y(0,0)), sqrt(uncertainty_z(0,0)));
-                RCLCPP_INFO(get_logger(), "update: ori state = %f, %f, %f", state_roll[0]*57.3, state_pitch[0]*57.3, state_yaw[0]*57.3);
-                RCLCPP_INFO(get_logger(), "update: ori bias = %f %f %f",  state_roll[1]*57.3, state_pitch[1]*57.3, state_yaw[1]*57.3);
-                RCLCPP_INFO(get_logger(), "update: ori uncertainty = %f, %f, %f", sqrt(uncertainty_roll(0,0))*57.3, sqrt(uncertainty_pitch(0,0))*57.3, sqrt(uncertainty_yaw(0,0))*57.3);
+                // RCLCPP_INFO(get_logger(), "update: pos state = %f, %f, %f, vel = %f, %f, %f, bias = %f %f %f", state_pos(0), state_pos(1), state_pos(2), state_pos(3), state_pos(4), state_pos(5), state_pos(6), state_pos(7), state_pos(8));
+                RCLCPP_INFO(get_logger(), "update: state pos  = %f, %f, %f", state_pos(0), state_pos(1), state_pos(2));
+                RCLCPP_INFO(get_logger(), "update: state vel = %f, %f, %f, ", state_pos(3), state_pos(4), state_pos(5));
+                RCLCPP_INFO(get_logger(), "update: state acc bias = %f %f %f", state_pos(6), state_pos(7), state_pos(8));
+                RCLCPP_INFO(get_logger(), "update: state uncertainty = %f, %f, %f", sqrt(uncertainty_pos(0,0)), sqrt(uncertainty_pos(1,1)), sqrt(uncertainty_pos(2,2)));
+                RCLCPP_INFO(get_logger(), "update: state ori state = %f, %f, %f", state_roll[0]*57.3, state_pitch[0]*57.3, state_yaw[0]*57.3);
+                RCLCPP_INFO(get_logger(), "update: state ori bias = %f %f %f",  state_roll[1]*57.3, state_pitch[1]*57.3, state_yaw[1]*57.3);
+                RCLCPP_INFO(get_logger(), "update: state ori uncertainty = %f, %f, %f", sqrt(uncertainty_roll(0,0))*57.3, sqrt(uncertainty_pitch(0,0))*57.3, sqrt(uncertainty_yaw(0,0))*57.3);
             }
         }
 
