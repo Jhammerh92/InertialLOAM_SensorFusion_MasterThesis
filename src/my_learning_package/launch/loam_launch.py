@@ -97,11 +97,11 @@ def generate_launch_description():
     # )
 
     
-    transform_node_odom_lidar_odom = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        arguments = [ '-0.021', '0', '0.192', '0', '0', '0' , 'odom', 'lidar_odom'] # the transformation from base_link to livox_frame, but this is establish in the rsp
-    )
+    # transform_node_odom_lidar_odom = Node(
+    #     package='tf2_ros',
+    #     executable='static_transform_publisher',
+    #     arguments = [ '-0.021', '0', '0.192', '0', '0', '0' , 'odom', 'lidar_odom'] 
+    # )
 
 
     # transform_node_base_link = Node(

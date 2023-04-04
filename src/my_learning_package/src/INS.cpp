@@ -288,8 +288,6 @@ class INS : public rclcpp::Node
             prediction_anchor.pos = position;
             prediction_anchor.time = process_time;
             prediction_anchor.ori = orientation;
-            // prediction_anchor.bias.acc = acceleration;
-            // prediction_anchor.bias.ang = angular_velocity;
             prediction_anchor.bias = current_bias;
         }
 
@@ -298,7 +296,7 @@ class INS : public rclcpp::Node
             acceleration = prediction_anchor.acc;
             velocity = prediction_anchor.vel;
             position = prediction_anchor.pos;
-            // process_time = prediction_anchor.time;
+            process_time = prediction_anchor.time;
             orientation = prediction_anchor.ori;
             current_bias = prediction_anchor.bias;
         }
@@ -413,6 +411,7 @@ class INS : public rclcpp::Node
                 current_bias = bias_buffer.front();
                 bias_buffer.pop_front();
             }
+            RCLCPP_INFO(get_logger(), "Current Bias time: %f Process time: %f", current_bias.time, process_time );
             RCLCPP_INFO(get_logger(), "Current Bias acc: %f %f %f ang %f %f %f", current_bias.acc.x(), current_bias.acc.y(), current_bias.acc.z(), current_bias.ang.x(), current_bias.ang.y(), current_bias.ang.z() );
 
         }
@@ -491,7 +490,7 @@ class INS : public rclcpp::Node
         void processINSPrediction(double cutoff_time)
         {
             getPredictionAnchor();
-            getCurrentBias(process_time);
+            // getCurrentBias(process_time);
             IMUwrench imu;
             while (!predict_buffer.empty()){
                 imu = predict_buffer.front();
@@ -607,20 +606,17 @@ class INS : public rclcpp::Node
         void updateOrientation(Eigen::Vector3d angular_velocity ){
             
             orientation_post = orientation;
-            angular_acceleration = (previous_angular_velocity - angular_velocity) / imu_dt_;
-            Eigen::Vector3d average_angular_velocity = 0.5 * ((previous_angular_velocity - previous_bias.ang) + (angular_velocity - current_bias.ang)) - angular_velocity_offset;
-            // first half is for average, second is dq_dt = 1/2 q w
-            // but this should be taken care of in deltaQ??, ran two instances of madgwick that sent the rate twice..
+            // angular_acceleration = (previous_angular_velocity - angular_velocity) / imu_dt_;
+            Eigen::Vector3d average_angular_velocity = 0.5 * (previous_angular_velocity  + angular_velocity) - current_bias.ang;
             orientation_dt = deltaQ(average_angular_velocity * imu_dt_);
             orientation *= orientation_dt;
-            previous_angular_velocity = angular_velocity; // the previos bias is baked in
+            previous_angular_velocity = angular_velocity; 
 
 
             Eigen::Vector3d omega_old(omega);
             Eigen::AngleAxisd axangomega(orientation_dt);
             omega = axangomega.axis();
             omega *= axangomega.angle() / imu_dt_;
-
             alpha = (omega - omega_old);
 
         }
@@ -707,12 +703,16 @@ class INS : public rclcpp::Node
             INS_odometry.twist.twist.angular.z = angular_velocity[2];
 
             
-            vector<double> cov_diag{0.5,0.5,0.5, 0.1,0.1,0.1};
+            vector<double> cov_diag{0.02,0.02,0.02, 0.0001, 0.0001, 0.0001};
+            // vector<double> cov_diag{0.0000001,0.000001,0.000001, 0.000001, 0.000001, 0.0000001};
+            vector<double> cov_diag_twist{0.0025,0.0025,0.0025, 0.001, 0.001, 0.001};
             Eigen::MatrixXd cov_mat = createCovarianceEigen(cov_diag);
+            Eigen::MatrixXd cov_twist = createCovarianceEigen(cov_diag_twist);
             // Eigen::Matrix3d rot_mat = last_odometry_pose.block<3,3>(0,0);
             // Eigen::Matrix3d rot_mat(Eigen::Quaterniond(latestPoseInfo.qw, latestPoseInfo.qx, latestPoseInfo.qy, latestPoseInfo.qz ));
             // rotateCovMatrix(cov_mat, rot_mat);
             setCovariance(INS_odometry.pose.covariance, cov_mat);
+            setCovariance(INS_odometry.twist.covariance, cov_twist);
 
             ins_pub->publish(INS_odometry);
 
@@ -761,10 +761,10 @@ class INS : public rclcpp::Node
 
         }
         
-        void saveCorrectionPose(Eigen::Vector3d position_, Eigen::Vector3d velocity_)
-        {
+        // void saveCorrectionPose(Eigen::Vector3d position_, Eigen::Vector3d velocity_)
+        // {
 
-        }
+        // }
 
         void correctINSPose(Eigen::Vector3d position_, Eigen::Vector3d velocity_)
         {

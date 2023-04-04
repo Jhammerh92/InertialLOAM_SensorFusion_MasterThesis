@@ -7,10 +7,15 @@ ekf_ins:
 
     # Q
     # process noise std
-    process_noise_roll: 0.005
-    process_noise_pitch: 0.005
-    process_noise_yaw: 0.005
+    process_noise_roll: 0.05
+    process_noise_pitch: 0.05
+    process_noise_yaw: 0.1
 
+    process_noise_pos: 0.5 # 0.01> x >0.0007 
+    # process_noise_x: 0.001
+    # process_noise_y: 0.001
+    # process_noise_z: 0.001
+    
     # R
     # measurement noise std
     # measurement_noise_ori: 0.00001
@@ -18,20 +23,15 @@ ekf_ins:
     measurement_noise_pitch: 0.01
     measurement_noise_yaw:   0.01
 
-    # Q
-    process_noise_pos: 0.2 # 0.01> x >0.0007 
-    # process_noise_x: 0.001
-    # process_noise_y: 0.001
-    # process_noise_z: 0.001
 
     # R
-    measurement_noise_pos: 0.005 # is manually updated from LO estimation
+    measurement_noise_pos: 0.5 # is automatically updated from LO estimation
     measurement_noise_imu: 0.01
     # measurement_noise_x: 0.00001
     # measurement_noise_y: 0.00001
     # measurement_noise_z: 0.00001
 
-    init_calib_steps: 0 # if zero no initial calib is done
+    init_calib_steps: 100 # if zero no initial calib is done
     imu_topic: "/imu/data"
     # imu_topic: "/imu/data"
 

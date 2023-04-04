@@ -105,6 +105,7 @@ private:
 
     int remove_statistical_outliers_knn_points_;
     double remove_statistical_outliers_std_mul_;
+    double remove_transition_outliers_cos_angle_threshold_;
     double normalize_intensities_reference_range_;
     int calculate_point_curvature_kernel_width_;
     int calculate_point_plateau_kernel_width_;
@@ -135,6 +136,9 @@ public:
 
         declare_parameter("remove_statistical_outliers_std_mul", 1.5);
         get_parameter("remove_statistical_outliers_std_mul", remove_statistical_outliers_std_mul_);
+
+        declare_parameter("remove_transition_outliers_cos_angle_threshold", 0.9999);
+        get_parameter("remove_transition_outliers_cos_angle_threshold", remove_transition_outliers_cos_angle_threshold_);
 
         declare_parameter("normalize_intensities_reference_range", 0.0);
         get_parameter("normalize_intensities_reference_range", normalize_intensities_reference_range_);
@@ -277,12 +281,33 @@ public:
     template <typename PointT>
     Eigen::Vector3d getNormalizedPositionVector(PointT pt)
     {
-        // double dist = getDepth(pt)
-        Eigen::Vector3d position_vector(pt.x, pt.y, pt.z);
-        position_vector.normalize();
-
+        Eigen::Vector3d position_vector = getPositionVector(pt).normalized();
         return position_vector;
     }
+
+    template <typename PointT>
+    Eigen::Vector3d getPositionVector(PointT pt)
+    {
+        Eigen::Vector3d position_vector(pt.x, pt.y, pt.z);
+        return position_vector;
+    }
+
+    template <typename PointT>
+    Eigen::Vector3d getXNormalizedVector(PointT pt)
+    {
+        Eigen::Vector3d position_vector(1.0, pt.y/pt.x, pt.z/pt.x);
+        return position_vector;
+    }
+
+    // template <typename PointT>
+    // Eigen::Vector3d getDepthNormalizedVector(PointT pt)
+    // {
+    //     double depth = getDepth(pt);
+    //     Eigen::Vector3d position_vector(pt.x/depth, pt.y/depth, pt.z/depth);
+    //     // position_vector.normalize();
+
+    //     return position_vector;
+    // }
 
     template <typename PointT>
     Eigen::Vector3d getSurfaceNormal(PointT pt)
@@ -397,7 +422,7 @@ public:
             // cloud_out.points[i].curvature = (curvature + 1) * (curvature + 1) - 1;
         }
 
-        cloud_out.points.resize(N - 2 * m); // m amount of points have been removed on each side of the scan
+        cloud_out.points.resize(N - 2 * m); // m amount of points have been removed on each end of the scan
 
         cloud_out.height = 1;
         cloud_out.width = static_cast<uint32_t>(N - 2 * m);
@@ -503,6 +528,65 @@ public:
         sor.setStddevMulThresh(remove_statistical_outliers_std_mul_); // x*std outlier rejection threshold - 2.0 should cover 98% percent of gaussin dist points
         sor.filter(cloud_out);
     }
+
+    template <typename PointT>
+    void removeTransitionOutliers(const pcl::PointCloud<PointT> &cloud_in, pcl::PointCloud<PointT> &cloud_out)
+    {
+        // PointType point;
+        size_t size_in = cloud_in.points.size();
+        cloud_out.points[0] = cloud_in.points[0];
+        size_t j = 1;
+        // size_t section_start = 1;
+        // size_t section_end = 0;
+        // double nominal_step_length = 10.0;
+        for (size_t i = 1; i < size_in-1; ++i)
+        {
+            Eigen::Vector3d shooting_vector_fore = getPositionVector(cloud_in.points[i-1]); // P
+            Eigen::Vector3d shooting_vector_query = getPositionVector(cloud_in.points[i]); // Q
+            Eigen::Vector3d shooting_vector_aft = getPositionVector(cloud_in.points[i+1]); 
+
+            Eigen::Vector3d step_vector_to = (shooting_vector_query - shooting_vector_fore ); //
+            Eigen::Vector3d step_vector_from = (shooting_vector_aft - shooting_vector_query ); // 
+            Eigen::Vector3d center_vector(1.0,0.0,0.0);
+            // double step_length = (step_vector_to.norm()*step_vector_to.norm() + step_vector_from.norm()*step_vector_from.norm());
+            double step_length = (step_vector_to.norm() + step_vector_from.norm()) * (step_vector_to.norm() + step_vector_from.norm());
+            double depth = getDepth(cloud_in.points[i]);
+            // double cos_angle = abs(step_vector_to.normalized().dot(shooting_vector_fore.normalized()));
+            double cos_angle_from_center = abs(center_vector.dot(shooting_vector_query.normalized()));
+            double scan_wander = (shooting_vector_fore.normalized() - shooting_vector_aft.normalized()).norm()*depth;
+            scan_wander *= scan_wander;
+            // double distance_to_shooting_vector = step_vector_to.cross(shooting_vector_fore).norm() / shooting_vector_fore.norm();
+
+            // if (distance_to_shooting_vector < remove_transition_outliers_cos_angle_threshold_ && cos_angle >= 0.9986){ 
+            if (step_length * (1.0/ (cos_angle_from_center*cos_angle_from_center))/(scan_wander) > remove_transition_outliers_cos_angle_threshold_  ) {//&& cos_angle >= 0.9986){ 
+            // if (cos_angle > remove_transition_outliers_cos_angle_threshold_){ 
+            // if (distance_to_shooting_vector < remove_transition_outliers_cos_angle_threshold_){ 
+                // RCLCPP_INFO(get_logger(), "point %i removed cos angle = %f", i, cos_angle);
+                // RCLCPP_INFO(get_logger(), "scan_wander %f", scan_wander);
+                // RCLCPP_INFO(get_logger(), "scan_wander/depth %f", scan_wander/depth);
+                // RCLCPP_INFO(get_logger(), "distance_to_shooting_vector %f", distance_to_shooting_vector);
+                // RCLCPP_INFO(get_logger(), "step_length %f", step_length);
+                // RCLCPP_INFO(get_logger(), "step_length/depth %f", step_length/depth);
+                // RCLCPP_INFO(get_logger(), "threshold %f", step_length/(scan_wander) /depth);
+                continue;
+            }
+            // section_start = i;
+            // RCLCPP_INFO(get_logger(), "point %i added %i cos angle = %f", i, j,cos_angle);
+            cloud_out.points[j] = cloud_in.points[i]; 
+            j++;                                      // count exchanged points
+        }
+
+        if (j != cloud_in.points.size())
+        {
+            cloud_out.points.resize(j);
+        }
+
+        cloud_out.height = 1;
+        cloud_out.width = static_cast<uint32_t>(j);
+        cloud_out.is_dense = true;
+        // RCLCPP_INFO(get_logger(), "points removed %i ", size_in - cloud_out.points.size());
+    }
+    
 
     // template <typename PointT>
     void assignEdgeAndSurface(boost::shared_ptr<pcl::PointCloud<PointType>> &edges, boost::shared_ptr<pcl::PointCloud<PointType>> &surfs)
@@ -698,6 +782,7 @@ public:
 
         // ESSENTIAL PREPROCESSING
         removeClosedPointCloud(*lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals, filter_close_points_distance_m_); // removes invalid points within a distance of x m from the center of the lidar
+        removeTransitionOutliers(*lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals);
         removeStatisticalOutliers(lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals);
         pcl::copyPointCloud(*lidar_cloud_in_no_normals, *lidar_cloud_in); // change pointtype to point with normal data
         calculatePointNormals(lidar_cloud_in, *lidar_cloud_in); // openMP multi-processing accelerated
