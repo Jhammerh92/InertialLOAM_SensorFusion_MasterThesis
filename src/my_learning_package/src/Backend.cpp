@@ -113,6 +113,7 @@ class Backend : public rclcpp::Node
 
         bool new_cloud_ready;
         bool new_pose_ready;
+        bool save_pcd_{};
 
         double global_map_ds_leafsize_;
         double global_map_update_rate_;
@@ -131,6 +132,9 @@ class Backend : public rclcpp::Node
 
             declare_parameter("odometry_topic", "/odom_keyframe");
             get_parameter("odometry_topic", odometry_topic_);    
+
+            declare_parameter("save_pcd", false);
+            get_parameter("save_pcd", save_pcd_);    
 
 
             allocateMemory();
@@ -285,6 +289,7 @@ class Backend : public rclcpp::Node
 
             new_pose_ready = true;
             // RCLCPP_INFO(get_logger(), "pose recieved");
+
         }
 
         // make function that checks odom and cloud ready bools to run and compares timestamps before saving cloud and pose, as these have to match each other
@@ -341,17 +346,31 @@ class Backend : public rclcpp::Node
             
         // }
 
-        void updateOdometryPose()
-        {   
-            Eigen::Matrix4d next_odometry_pose = last_odometry_pose * odometry_transformation; // the next evaluted odometry pose, not neccesarily a keyframe
-            // last_odometry_transformation = last_odometry_pose * next_odometry_pose.inverse(); // transformation between 2 consecutive odometry poses
-            // odometry_transformation_guess = registration_transformation * last_odometry_transformation; // prediction of the next transformation using the previuosly found transformation - used for ICP initial guess
-            last_odometry_pose = next_odometry_pose;
+        // void updateOdometryPose()
+        // {   
+        //     Eigen::Matrix4d next_odometry_pose = last_odometry_pose * odometry_transformation; // the next evaluted odometry pose, not neccesarily a keyframe
+        //     // last_odometry_transformation = last_odometry_pose * next_odometry_pose.inverse(); // transformation between 2 consecutive odometry poses
+        //     // odometry_transformation_guess = registration_transformation * last_odometry_transformation; // prediction of the next transformation using the previuosly found transformation - used for ICP initial guess
+        //     last_odometry_pose = next_odometry_pose;
 
-            all_poses.push_back(last_odometry_pose);
+        //     all_poses.push_back(last_odometry_pose);
+
+        // }
+
+        // void buildLocalMap()
+        // {
+
+        // }
+
+        void saveGlobalCloudPCD()
+        {
+            if (!save_pcd_)
+                return;
+                
+            RCLCPP_INFO(get_logger(), "Saving Global Cloud!");
+            pcl::io::savePCDFileASCII("temp_saved_odometry_data/pcd/global_map.pcd", *global_cloud_ds);
 
         }
-
    
 
         void publishGlobalCloud()
@@ -392,7 +411,7 @@ class Backend : public rclcpp::Node
             msgs.header.frame_id = "global_map";
             globalcloud_pub->publish(msgs);
 
-            // clear the cloud out of RAM.
+            // clear the the unsampled cloud out of RAM.
             global_cloud->clear();
             // global_map_ds->clear();
         }
@@ -403,6 +422,7 @@ class Backend : public rclcpp::Node
                 return;
             }
             publishGlobalCloud();
+            saveGlobalCloudPCD();
             new_cloud_ready = false;
             new_pose_ready = false;
         }

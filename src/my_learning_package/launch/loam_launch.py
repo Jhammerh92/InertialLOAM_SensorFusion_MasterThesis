@@ -61,6 +61,13 @@ def generate_launch_description():
                 , launch_arguments={'use_sim_time': 'false'}.items()
     )
 
+    madgwick_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([os.path.join(
+            get_package_share_directory(package_name),'launch','imu_madgwick_filter.launch.py'
+        )])
+    )
+
+
 
 
     transform_node_global_map_lidar_odom = Node( # this should change in the future if the map is ever going to be firm and disconnected from odometry
@@ -119,7 +126,7 @@ def generate_launch_description():
 
 
 
-
+    ld.add_action(madgwick_launch)
     ld.add_action(preprocessing_launch)
     ld.add_action(backend_launch)
     # ld.add_action(ekf_launch)

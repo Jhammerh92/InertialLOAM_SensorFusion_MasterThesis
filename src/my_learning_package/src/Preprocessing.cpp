@@ -177,7 +177,7 @@ public:
         sub_imu = this->create_subscription<sensor_msgs::msg::Imu>("/imu/data_raw", 100, std::bind(&Preprocessing::imuHandler, this, _1), options);                  // make separate subscribe callback group?
 
         timer_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-        process_timer = this->create_wall_timer(5ms, std::bind(&Preprocessing::processNext, this), timer_cb_group_);
+        process_timer = this->create_wall_timer(1ms, std::bind(&Preprocessing::processNext, this), timer_cb_group_);
 
         // sub_imu = nh.subscribe<sensor_msgs::Imu>("/livox/imu", 200, &Preprocessing::imuHandler, this);
 
@@ -305,7 +305,6 @@ public:
     //     double depth = getDepth(pt);
     //     Eigen::Vector3d position_vector(pt.x/depth, pt.y/depth, pt.z/depth);
     //     // position_vector.normalize();
-
     //     return position_vector;
     // }
 
@@ -325,7 +324,7 @@ public:
         return nanoseconds * 1e-9;
     }
 
-    // get quaternion from rotation vector
+    // get delta quaternion from angular rates
     template <typename Derived>
     Eigen::Quaternion<typename Derived::Scalar> deltaQ(const Eigen::MatrixBase<Derived> &theta)
     {
@@ -504,13 +503,11 @@ public:
 
         if (pc_normal_search_radius_ > 0.0)
         {
-            // Use all neighbors in a sphere of radius x meters
-            normal_estimator.setRadiusSearch(pc_normal_search_radius_);
+            normal_estimator.setRadiusSearch(pc_normal_search_radius_); // Use all neighbors in a sphere of radius x meters
         }
         else
         {
-            // use x nearest points, more robust to cloud scale variation
-            normal_estimator.setKSearch(pc_normal_knn_points_);
+            normal_estimator.setKSearch(pc_normal_knn_points_); // use x nearest points, more robust to cloud scale variation
         }
 
         // Compute the features

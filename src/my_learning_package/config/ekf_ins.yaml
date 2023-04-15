@@ -35,5 +35,7 @@ ekf_ins:
     imu_topic: "/imu/data"
     # imu_topic: "/imu/data"
 
+    publish_bias: false
+
     print_states: true
     use_madgwick_orientation: false

@@ -1,15 +1,15 @@
 preprocessing:
   ros__parameters:
-    filter_close_points_distance_m: 0.5 # in meters
+    filter_close_points_distance_m: 1.0 # in meters
     use_gyroscopic_undistortion: false
     pc_normal_search_radius: 0.0 # this is currently not used as it is not robust to variation in the cloud size which is apparent for pc from the livox lidar. large scale is 2.0, small scale is 0.2
-    pc_normal_knn_points: 25 # This is currently used over search_radius, 40
+    pc_normal_knn_points: 30 # This is currently used over search_radius, 40
     edge_threshold: 0.5
     surfaces_threshold: 0.01
     remove_statistical_outliers_knn_points: 25
     remove_statistical_outliers_std_mul: 25.0 # 1.5
 
-    remove_transition_outliers_cos_angle_threshold: 150.0 #0.99995 # 0.99995 is about 0.5 deg
+    remove_transition_outliers_cos_angle_threshold: 11350.0 #150
 
     normalize_intensities_reference_range: 0.0 # if this is zero the processing of this is off
     calculate_point_curvature_kernel_width: 0 # 1

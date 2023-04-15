@@ -26,16 +26,16 @@
 #include <tf2/LinearMath/Quaternion.h>
 
 
-
 #include <memory>
 #include <cstdio>
 #include <cmath>
 #include <queue>
 #include <vector>
+#include <fstream>
 // #include <eigen>
 
 using namespace std;
-// using namespace Eigen;
+
 
 using std::placeholders::_1;
 
@@ -109,53 +109,32 @@ class EKF_INS : public rclcpp::Node
         // ORIENTATION
 
         // state of orientation, x with bias on orientation, [alpha, q_b]
-        // Eigen::Vector2d state_pitch;  
-        // Eigen::Vector2d state_yaw; 
-        // Eigen::Vector2d state_roll; 
         Eigen::MatrixXd state_ori; 
         Eigen::Vector3d state_euler;
 
         // uncertainty / covariance matrix, P  -> check in docs for xsens imu if these are not equal on all axes
-        // Eigen::Matrix2d uncertainty_pitch;  
-        // Eigen::Matrix2d uncertainty_yaw;  
-        // Eigen::Matrix2d uncertainty_roll; 
+
         Eigen::MatrixXd uncertainty_ori; 
 
         // process noise matrix, Q -> check in docs for xsens imu if these are not equal on all axes
-        // Eigen::Matrix2d noise_pitch; 
-        // Eigen::Matrix2d noise_yaw;  
-        // Eigen::Matrix2d noise_roll; 
+
         Eigen::MatrixXd noise_ori; 
 
         // prediction matrix, A aka F
-        // Eigen::Matrix2d A_ori;
-        // Eigen::Matrix2d A_ori_T;
-        // // bias matrix, B
-        // Eigen::Vector2d B_ori;
         Eigen::MatrixXd A_ori;
         Eigen::MatrixXd A_ori_T;
         // bias matrix, B
         Eigen::MatrixXd B_ori;
 
         // measurement matrix H
-        // Eigen::RowVector2d H_ori;
-        // Eigen::Vector2d H_ori_T;
-
         Eigen::MatrixXd H_ori;
         Eigen::MatrixXd H_ori_T;
 
         // Kalman gain
-        // Eigen::Vector2d gain_pitch;
-        // Eigen::Vector2d gain_yaw;
-        // Eigen::Vector2d gain_roll;
-
         Eigen::MatrixXd gain_ori_ins;
         Eigen::MatrixXd gain_ori_lidar;
 
         // measurement noise, R
-        // Eigen::VectorXd measurement_noise_pitch;
-        // Eigen::VectorXd measurement_noise_yaw;
-        // Eigen::VectorXd measurement_noise_roll;
         Eigen::Matrix3d measurement_covariance_ori_ins;
         Eigen::Matrix3d measurement_covariance_ori_lidar;
 
@@ -213,6 +192,9 @@ class EKF_INS : public rclcpp::Node
         double process_time{};
         double ins_time{};
 
+        Eigen::Vector3d body_acc_bias;
+
+
         Eigen::Vector3d acceleration;
         Eigen::Vector3d angular_velocity;
 
@@ -251,9 +233,12 @@ class EKF_INS : public rclcpp::Node
         bool print_states_{};
         bool use_madgwick_orientation_{};
         bool relative_mode_{};
+        bool publish_bias_{};
 
         builtin_interfaces::msg::Time kalman_stamp;
-    
+
+        std::ofstream data_file;
+
     
     public:
         EKF_INS() // constructer
@@ -299,6 +284,8 @@ class EKF_INS : public rclcpp::Node
 
             declare_parameter("use_madgwick_orientation", false);
             get_parameter("use_madgwick_orientation", use_madgwick_orientation_);
+            declare_parameter("publish_bias", false);
+            get_parameter("publish_bias", publish_bias_);
             
 
             RCLCPP_INFO(get_logger(), "Listning for IMU on %s", imu_topic_.c_str());
@@ -327,10 +314,62 @@ class EKF_INS : public rclcpp::Node
             
 
             initializeArrays();
+            initDataFile();
         
-
         }
         ~EKF_INS(){}
+
+        void initDataFile()
+        {   
+            // if (!save_running_data_)
+            //     return;
+
+            data_file.open ("temp_saved_odometry_data/kalman/kalman_data.csv");
+
+            data_file << "time, x, y, z, vx, vy, vz, ex, ey, ez, qw, qx, qy, qz, bias_acc_x, bias_acc_y, bias_acc_z, bias_ang_x, bias_ang_y, bias_ang_z";
+
+        }
+        void saveRunningData()
+        {
+            // if (!save_running_data_)
+            //     return;
+
+            // order of data: "time, x, y, z, vx, vy, vz, obs_vx, obs_vy, obs_vz, qw, qx, qy, qz, fitness, residual_x, residual_y, residual_z, residual_qw, residual_qx, residual_qy, residual_qz, cov_x, cov_y, cov_z, bias_acc_x, bias_acc_y, bias_acc_z, bias_ang_x, bias_ang_y, bias_ang_z "
+            deque<double> print_qeue;
+            print_qeue.push_back(measurement_time);         // time
+            print_qeue.push_back(state_pos(0));             // x          
+            print_qeue.push_back(state_pos(1));             // y          
+            print_qeue.push_back(state_pos(2));             // z  
+            print_qeue.push_back(state_pos(3));             // vx          
+            print_qeue.push_back(state_pos(4));             // vy          
+            print_qeue.push_back(state_pos(5));             // vz        
+            print_qeue.push_back(state_ori(0));             // ex        
+            print_qeue.push_back(state_ori(1));             // ey        
+            print_qeue.push_back(state_ori(2));             // ez        
+            print_qeue.push_back(latestPoseInfo.qw);        // qw         
+            print_qeue.push_back(latestPoseInfo.qx);        // qx         
+            print_qeue.push_back(latestPoseInfo.qy);        // qy         
+            print_qeue.push_back(latestPoseInfo.qz);        // qz         
+            print_qeue.push_back(body_acc_bias.x());             // bias_acc_x          
+            print_qeue.push_back(body_acc_bias.y());             // bias_acc_y         
+            print_qeue.push_back(body_acc_bias.z());             // bias_acc_z          
+            print_qeue.push_back(state_ori(3));             // bias_ang_x          
+            print_qeue.push_back(state_ori(4));             // bias_ang_y         
+            print_qeue.push_back(state_ori(5));             // bias_ang_z          
+
+            int length =  (int)print_qeue.size();
+
+            data_file << "\n";
+            for(int i=0; i < length; i++){
+                data_file << std::to_string(print_qeue.front()); 
+                if (i < length-1){
+                    data_file << ","; 
+                }
+                print_qeue.pop_front();
+            }
+            print_qeue.clear(); // just to make sure it is empty
+
+        }
 
         void initializeArrays()
         {   
@@ -351,6 +390,7 @@ class EKF_INS : public rclcpp::Node
             ins_velocity = Eigen::Vector3d::Zero();
             ins_orientation = tf2::Quaternion::getIdentity();
 
+            body_acc_bias = Eigen::Vector3d::Zero();
 
             // imu_dt_ = 0.01; //TODO: make this a ros parameter, done
 
@@ -909,7 +949,6 @@ class EKF_INS : public rclcpp::Node
                 // RCLCPP_INFO(get_logger(), "recieved madgwick pose roll: %f pitch: %f yaw: %f", roll*57.3, pitch*57.3, yaw*57.3);
 
                 processUpdate();
-                // RCLCPP_INFO(get_logger(),"Where's the poop?");
             }
         }
 
@@ -1092,9 +1131,12 @@ class EKF_INS : public rclcpp::Node
             // RCLCPP_INFO(get_logger(), "Absolute is running");
             publishOdometry();
 
+            
             publishBias();
 
             printStates();
+
+            saveRunningData();
 
         }
 
@@ -1281,6 +1323,10 @@ class EKF_INS : public rclcpp::Node
             // RCLCPP_INFO(get_logger(), "HPHt2 %f %f %f", HPHt.col(1)[0], HPHt.col(1)[1], HPHt.col(1)[2]);
             // RCLCPP_INFO(get_logger(), "HPHt3 %f %f %f", HPHt.col(2)[0], HPHt.col(2)[1], HPHt.col(2)[2]);
             // print state
+
+            Eigen::Quaterniond ori = tf2Eigen(orientation_quaternion);
+            body_acc_bias = Eigen::Vector3d(state_pos(6), state_pos(7), state_pos(8));
+            body_acc_bias = ori * body_acc_bias;
             
         }
 
@@ -1510,10 +1556,12 @@ class EKF_INS : public rclcpp::Node
         }
 
         void publishBias()
-        {
+        {   
+            if (!publish_bias_)
+                return;
             // using a wrench as data transfer as it has two vec3 elements,
             geometry_msgs::msg::WrenchStamped bias_msg;
-            bias_msg.header.frame_id = "bias";
+            bias_msg.header.frame_id = "kalman_bias";
             bias_msg.header.stamp = kalman_stamp;
 
 

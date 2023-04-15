@@ -114,7 +114,6 @@ class INS : public rclcpp::Node
 
         // NOTE: make filter or mechanization do the gravity estimate !!!
 
-
         double imu_dt_; 
         double scan_dt{};
         double scan_timestamp{};
@@ -122,6 +121,7 @@ class INS : public rclcpp::Node
         double prediction_time{};
 
         double calibration_time{};
+        int calibration_updates{};
         
         double g_acc_; // gravity scalar value
         double g_acc_var;
@@ -197,6 +197,8 @@ class INS : public rclcpp::Node
         bool use_ficticiuos_force_correction_{};
         bool use_kalman_bias_correction_{};
         bool predict_next_scan_{};
+        bool run_independent_{};
+        bool orientation_only_{};
 
         // std_msgs::msg::Header imu_data_header;
         // sensor_msgs::msg::Imu filtered_imu_data;
@@ -242,6 +244,12 @@ class INS : public rclcpp::Node
 
             declare_parameter("predict_next_scan", false);
             get_parameter("predict_next_scan", predict_next_scan_);
+
+            declare_parameter("run_independent", false);
+            get_parameter("run_independent", run_independent_);
+
+            declare_parameter("orientation_only", false);
+            get_parameter("orientation_only", orientation_only_);
 
 
             RCLCPP_INFO(get_logger(),"INS listning on topic %s", imu_topic_.c_str());
@@ -306,7 +314,7 @@ class INS : public rclcpp::Node
             step = 0;
 
             // g_acc_ = 9.825;
-            g_acc_var = 0.1;
+            g_acc_var = 0.0001;
             g_acc_sum = 0.0;
             g_acc_sumsq = 0.0;
             g_vec << 0.0, 0.0, 1.0;
@@ -350,6 +358,10 @@ class INS : public rclcpp::Node
             // put data into buffer back
             RCLCPP_INFO_ONCE(get_logger(),"First IMU message recieved..");
             imu_buffer.push_back(imu_data);
+
+            if (run_independent_){
+                processINS(1e15);
+            }
 
         }
 
@@ -406,14 +418,15 @@ class INS : public rclcpp::Node
 
         void getCurrentBias(double cutoff_time)
         {
-            previous_bias = current_bias;
-            while (current_bias.time < cutoff_time && !bias_buffer.empty()) {
-                current_bias = bias_buffer.front();
-                bias_buffer.pop_front();
+            if (use_kalman_bias_correction_){
+                previous_bias = current_bias;
+                while (current_bias.time < cutoff_time && !bias_buffer.empty()) {
+                    current_bias = bias_buffer.front();
+                    bias_buffer.pop_front();
+                }
+                RCLCPP_INFO(get_logger(), "Current Bias time: %f Process time: %f", current_bias.time, process_time );
+                RCLCPP_INFO(get_logger(), "Current Bias acc: %f %f %f ang %f %f %f", current_bias.acc.x(), current_bias.acc.y(), current_bias.acc.z(), current_bias.ang.x(), current_bias.ang.y(), current_bias.ang.z() );
             }
-            RCLCPP_INFO(get_logger(), "Current Bias time: %f Process time: %f", current_bias.time, process_time );
-            RCLCPP_INFO(get_logger(), "Current Bias acc: %f %f %f ang %f %f %f", current_bias.acc.x(), current_bias.acc.y(), current_bias.acc.z(), current_bias.ang.x(), current_bias.ang.y(), current_bias.ang.z() );
-
         }
 
         void processINS(double cutoff_time)
@@ -473,12 +486,14 @@ class INS : public rclcpp::Node
                     }
                 }
                 updateAcceleration(acceleration_in);
-                updateVelocity();
-                updatePosition();
-
-                if (step < gravity_estimation_period_){
-                    updateGravityCalibration(acceleration_in, toSec(delayed_imu_data->header.stamp));
+                if (!orientation_only_){
+                    updateVelocity();
+                    updatePosition();
                 }
+
+                // if (step < gravity_estimation_period_){
+                updateGravityCalibration(acceleration_in, toSec(delayed_imu_data->header.stamp));
+                // }
 
                 publishINS();
 
@@ -610,6 +625,7 @@ class INS : public rclcpp::Node
             Eigen::Vector3d average_angular_velocity = 0.5 * (previous_angular_velocity  + angular_velocity) - current_bias.ang;
             orientation_dt = deltaQ(average_angular_velocity * imu_dt_);
             orientation *= orientation_dt;
+            orientation.normalize();
             previous_angular_velocity = angular_velocity; 
 
 
@@ -790,7 +806,10 @@ class INS : public rclcpp::Node
 
 
         void updateGravityCalibration(Eigen::Vector3d static_acc, double time_stamp)
-        {
+        {   
+            if (calibration_updates > 10)
+                return;
+
             g_vec_buffer.push_back(static_acc);
 
             // when enough time has passed trigger the calibration
@@ -831,6 +850,7 @@ class INS : public rclcpp::Node
                 position = Eigen::Vector3d::Zero();
 
                 calibration_time = time_stamp;
+                calibration_updates++;
             }
         }
 
