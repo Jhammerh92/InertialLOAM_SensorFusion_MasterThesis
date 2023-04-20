@@ -1,6 +1,6 @@
 from launch import LaunchDescription
-from launch_ros.actions import Node
-from launch.actions import IncludeLaunchDescription
+from launch_ros.actions import Node, SetRemap
+from launch.actions import IncludeLaunchDescription, GroupAction
 from math import pi, radians
 
 def generate_launch_description():
@@ -13,11 +13,12 @@ def generate_launch_description():
         parameters=[
             {"model":"VLP16"},
             {"frame_id": "velodyne"},
-            {"rpm": 300.0},
-            {"pcap":r"/media/slamnuc/HAMMER DATA 2TB/DTU_LIDAR_20220523/20220523_124156/VLP16_lidar_ts_01.pcap"}, # hardcoded data path
-            {"read_once":False},
+            {"rpm": 600.0},
+            {"pcap":r"/home/slamnuc/vlp16_recordings/20230302_145113/VLP16_lidar_ts_01.pcap"}, # hardcoded data path
+            # {"pcap":r"/media/slamnuc/HAMMER DATA 2TB/DTU_LIDAR_20220523/20220523_124156/VLP16_lidar_ts_01.pcap"}, # hardcoded data path
+            {"read_once":True},
             {"read_fast":False}, ## realtime or as fast as possible. In post-processing it might be advantagoues to do as fast as possible, but still making sure all msg are recieved
-            {"cut_angle": 2*pi}
+            {"cut_angle": pi}
         ]
     )
     
@@ -33,13 +34,26 @@ def generate_launch_description():
     )
     # '-0.12147491'
 
-    velodyne_convert_node = IncludeLaunchDescription(
-        launch_description_source='/opt/ros/foxy/share/velodyne_pointcloud/launch/velodyne_convert_node-VLP16-launch.py',
-        # add launch arguments
+    # velodyne_convert_node = IncludeLaunchDescription(
+    #     launch_description_source='/opt/ros/foxy/share/velodyne_pointcloud/launch/velodyne_convert_node-VLP16-launch.py',
+    #     # add launch arguments
+    # )
+
+
+    velodyne_convert_launch = GroupAction(
+        actions=[
+            SetRemap(src="/velodyne_points", dst="/velodyne/lidar"), # ramap the out to something used by filter, remember to do this with RT imeplementation!
+            IncludeLaunchDescription(
+                launch_description_source='/opt/ros/foxy/share/velodyne_pointcloud/launch/velodyne_convert_node-VLP16-launch.py',
+                # add launch arguments
+            )
+        
+        ]
     )
 
 
-    ld.add_action(velodyne_convert_node)
+    ld.add_action(velodyne_convert_launch)
+    # ld.add_action(velodyne_convert_node)
     ld.add_action(velodyne_node)
     ld.add_action(transform_node)
     return ld

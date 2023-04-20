@@ -1,14 +1,14 @@
 lidar_odometry:
   ros__parameters:
     # downsampling parameters
-    ds_voxel_size: 0.0 # <0.05
+    ds_voxel_size: 0.00 # <0.05
     ds_voxel_size_lc: 0.02 # 0.01
     use_cloud_scale_for_ds: false # if this is false above are used, if true below are used
     cloud_scale_previuos_cloud_weight: 0.9 # 0-1
     ds_lc_voxel_size_ratio: 2.0 # the bigger, the finer the local map is
     points_per_cloud_scale: 25 # desired points in the width of the cloud 
     # Keyframe thresholds
-    keyframe_threshold_length: 0.005 # meters, 2.0 is good, 0.02 for dense maps!
+    keyframe_threshold_length: 0.01 # meters, 2.0 is good, 0.02 for dense maps!
     keyframe_threshold_angle: 5.0 # deg, 30 is good
     keyframe_threshold_fitness: 0.5
     keyframe_threshold_index: 0 # 0 means it is not used
@@ -16,17 +16,19 @@ lidar_odometry:
     scan_matching_method: 0 # 0 ICP-p2pl, 1 GICP, 2 NDT-p2d
     icp_max_iterations: 25 # 10-30
     icp_max_coarse_iterations: 0 # 10-30
-    icp_max_correspondence_distance: 0.01 # should be less than voxelsize of source
-    coarse_correspondence_factor: 2000
+    icp_max_correspondence_distance: 0.05 # should be less than voxelsize of source
+    coarse_correspondence_factor: 20
     local_map_width: 100 # if 0 all previous keyframes are pushed to local map indefinitely
-    local_map_init_frames_count: 1
+    local_map_init_frames_count: 10
 
     # imu fusion parameters
     imu_topic: "/imu/data"
     use_ins_guess: false
     use_preint_imu_guess: false
     use_lidar_odometry_guess: false
-    use_preint_undistortion: true
+    use_preint_undistortion: true # PREINTEGRATION
+
+
     sync_offset_ms: 0.0 # this value is added to the lidar frame time stamp in millisec
 
 
@@ -42,8 +44,8 @@ lidar_odometry:
     gamma_4: 40.0   # velocity gain
     gamma_5: 0.5    # acc bias gain
 
-    start_idx: 2800
-    end_idx: 4500
+    start_idx: 0
+    end_idx: 0
 
     save_running_data: true
     save_path: "temp_saved_odometry_data/odometry/run_data.csv"

@@ -71,6 +71,9 @@ private:
     vector<sensor_msgs::msg::Imu::SharedPtr> imu_buffer;
     size_t imu_buffer_max_size = 600;
     int idx_imu = 0;
+    int latest_frame_idx = 0;
+    int start_idx_ = 0;
+    int end_idx_ = 0;
     double current_time_imu = -1;
     double lidar_zero_time = -1;
 
@@ -90,6 +93,7 @@ private:
     // int H_SCANS = 4000;
 
     string frame_id = "lidar_odom";
+    string lidar_source_topic_ = "";
     double runtime = 0;
     // ---- ROSPARAMETERS -----
 
@@ -149,6 +153,16 @@ public:
         declare_parameter("calculate_point_plateau_kernel_width", 0);
         get_parameter("calculate_point_plateau_kernel_width", calculate_point_plateau_kernel_width_);
 
+        declare_parameter("lidar_source_topic", "/livox");
+        get_parameter("lidar_source_topic", lidar_source_topic_);
+
+        declare_parameter("start_idx", 0); 
+        get_parameter("start_idx", start_idx_);
+
+        // declare_parameter("end_idx", std::numeric_limits<int>::max ()); 
+        declare_parameter("end_idx", 0); // 0 means endless 
+        get_parameter("end_idx", end_idx_);
+
 
 
         RCLCPP_INFO(get_logger(), "\033[1;32m---->\033[0m Preprocessing Started.");
@@ -173,7 +187,8 @@ public:
         subscriber_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);                                                            // create subscriber callback group
         rclcpp::SubscriptionOptions options;                                                                                                                         // create subscriver options
         options.callback_group = subscriber_cb_group_;                                                                                                               // add callbackgroup to subscriber options
-        sub_Lidar_cloud = this->create_subscription<sensor_msgs::msg::PointCloud2>("/livox/lidar", 100, std::bind(&Preprocessing::cloudHandler, this, _1), options); // add subscriber options to the subsriber constructor call..
+        string lidar_topic = lidar_source_topic_ + "/lidar";
+        sub_Lidar_cloud = this->create_subscription<sensor_msgs::msg::PointCloud2>(lidar_topic, 100, std::bind(&Preprocessing::cloudHandler, this, _1), options); // add subscriber options to the subsriber constructor call..
         sub_imu = this->create_subscription<sensor_msgs::msg::Imu>("/imu/data_raw", 100, std::bind(&Preprocessing::imuHandler, this, _1), options);                  // make separate subscribe callback group?
 
         timer_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -739,6 +754,12 @@ public:
             }
         }
 
+        latest_frame_idx++;
+        if (latest_frame_idx < start_idx_ || (latest_frame_idx > end_idx_ && end_idx_ > 0) ){
+            RCLCPP_INFO(get_logger(), "Skipping frames %i", latest_frame_idx);
+            return;
+        }
+
         #ifndef __INTELLISENSE__ // to ignore error from missing overload of function, should still work on the new sensor_msg::msg::PointCloud2
         pcl::fromROSMsg(current_cloud_msg, *lidar_cloud_in_no_normals);
         #endif
@@ -779,7 +800,7 @@ public:
 
         // ESSENTIAL PREPROCESSING
         removeClosedPointCloud(*lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals, filter_close_points_distance_m_); // removes invalid points within a distance of x m from the center of the lidar
-        removeTransitionOutliers(*lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals);
+        // removeTransitionOutliers(*lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals);
         removeStatisticalOutliers(lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals);
         pcl::copyPointCloud(*lidar_cloud_in_no_normals, *lidar_cloud_in); // change pointtype to point with normal data
         calculatePointNormals(lidar_cloud_in, *lidar_cloud_in); // openMP multi-processing accelerated
