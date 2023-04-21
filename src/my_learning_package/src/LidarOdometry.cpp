@@ -52,7 +52,7 @@
 // #include <pclomp/gicp_omp.h>
 
 #include <cmath>
-// #include <ctime>
+#include <ctime>
 // #include <array>
 // #include <string>
 #include <vector>
@@ -63,6 +63,9 @@
 // #include <mutex>
 #include <queue>
 // #include <assert.h>
+#include <iomanip>
+// #include <ctime>
+#include <sstream>
 
 #define _USE_MATH_DEFINES
 
@@ -573,10 +576,18 @@ class LidarOdometry : public rclcpp::Node
 
         void initDataFile()
         {   
+
+            auto t = std::time(nullptr);
+            auto tm = *std::localtime(&t);
+            std::ostringstream oss;
+            // oss << std::put_time(&tm, "%d-%m-%Y %H-%M-%S");
+            oss << std::put_time(&tm, "%Y%m%d-%H%M%S");
+            std:string datestr = oss.str();
+
             if (!save_running_data_)
                 return;
 
-            data_file.open (save_path_);
+            data_file.open (save_path_ + datestr + "run_data.csv");
 
             data_file << "ds_voxel_size: " + std::to_string(ds_voxel_size_)+"\n";
             data_file << "ds_voxel_size_lc: "+ std::to_string(ds_voxel_size_lc_)+"\n";
@@ -2357,7 +2368,7 @@ class LidarOdometry : public rclcpp::Node
             }
 
            
-            calculatePointNormals(local_map, *local_map);
+            // calculatePointNormals(local_map, *local_map);
             downsampleLocalMap();
 
             // transform the local map back to latest keyframe/"origo" for it to be matchable with the most recent cloud
@@ -2406,7 +2417,7 @@ class LidarOdometry : public rclcpp::Node
             pcl::transformPointCloudWithNormals<PointType>(*inverse_local_map, *local_map,  T.inverse().eval());
 
             downsampleLocalMap();
-            calculatePointNormals(local_map_ds, *local_map_ds);
+            // calculatePointNormals(local_map_ds, *local_map_ds);
             // normalFilterLocalMap(*local_map_ds, *local_map_ds);
 
             // cropLocalMap(*local_map_ds, *local_map_ds);
