@@ -29,6 +29,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(pcl_ros REQUIRED)
+# find_package(ndt_omp_ros2 REQUIRED)
 # find_package(pclomp REQUIRED)
 # uncomment the following section in order to fill in
 # further dependencies manually.
@@ -36,23 +37,23 @@ find_package(pcl_ros REQUIRED)
 
 set(dependencies "std_msgs" "std_srvs" "rclcpp" "geometry_msgs" "sensor_msgs" "tf2" "tf2_geometry_msgs" "sensor_msgs" "pcl_conversions" "pcl_ros" "nav_msgs")
 
-add_executable(hello_publisher src/hello_publisher.cpp)
-ament_target_dependencies(hello_publisher ${dependencies})
+# add_executable(hello_publisher src/hello_publisher.cpp)
+# ament_target_dependencies(hello_publisher ${dependencies})
 
-add_executable(hello_subscriber src/hello_subscriber.cpp)
-ament_target_dependencies(hello_subscriber ${dependencies})
+# add_executable(hello_subscriber src/hello_subscriber.cpp)
+# ament_target_dependencies(hello_subscriber ${dependencies})
 
-add_executable(imu_listener src/imu_listener.cpp)
-ament_target_dependencies(imu_listener ${dependencies})
+# add_executable(imu_listener src/imu_listener.cpp)
+# ament_target_dependencies(imu_listener ${dependencies})
 
-add_executable(imu_calibrater src/imu_calibrater.cpp)
-ament_target_dependencies(imu_calibrater ${dependencies})
+# add_executable(imu_calibrater src/imu_calibrater.cpp)
+# ament_target_dependencies(imu_calibrater ${dependencies})
 
-add_executable(imu_dead_recon src/imu_dead_recon.cpp)
-ament_target_dependencies(imu_dead_recon ${dependencies})
+# add_executable(imu_dead_recon src/imu_dead_recon.cpp)
+# ament_target_dependencies(imu_dead_recon ${dependencies})
 
-add_executable(imu_tf_broadcaster src/imu_tf_broadcaster.cpp)
-ament_target_dependencies(imu_tf_broadcaster ${dependencies})
+# add_executable(imu_tf_broadcaster src/imu_tf_broadcaster.cpp)
+# ament_target_dependencies(imu_tf_broadcaster ${dependencies})
 
 add_executable(lidar_odometry src/LidarOdometry.cpp)
 ament_target_dependencies(lidar_odometry ${dependencies})
@@ -96,13 +97,13 @@ target_include_directories(my_test_node PUBLIC
 #   $<INSTALL_INTERFACE:include>)
 
 install(TARGETS 
-  my_test_node
-  hello_publisher
-  hello_subscriber
-  imu_listener
-  imu_calibrater
-  imu_dead_recon
-  imu_tf_broadcaster
+  # my_test_node
+  # hello_publisher
+  # hello_subscriber
+  # imu_listener
+  # imu_calibrater
+  # imu_dead_recon
+  # imu_tf_broadcaster
   lidar_odometry
   preprocessing
   loam_backend

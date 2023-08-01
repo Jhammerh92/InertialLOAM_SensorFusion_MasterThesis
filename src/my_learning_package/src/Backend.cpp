@@ -395,7 +395,8 @@ class Backend : public rclcpp::Node
 
 
                 pcl::PointCloud<PointType> transformed_cloud;
-                pcl::transformPointCloudWithNormals<PointType>(*all_clouds[i], transformed_cloud, t_po, q_po);
+                // pcl::transformPointCloudWithNormals<PointType>(*all_clouds[i], transformed_cloud, t_po, q_po);
+                transformed_cloud = *all_clouds[i];
                 *global_cloud += transformed_cloud;
             }
 

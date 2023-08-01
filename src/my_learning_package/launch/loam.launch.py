@@ -12,13 +12,6 @@ def generate_launch_description():
     package_name='my_learning_package' #<--- CHANGE ME
     # config_dir = os.path.join(get_package_share_directory(package_name), 'config')
 
-    # lidar_odometry_node = Node(
-    #     package="my_learning_package",
-    #     name="lidar_odometry",
-    #     executable="lidar_odometry",
-    #     parameters=[os.path.join(config_dir, 'lidar_odometry.yaml')],
-    #     # arguments=['-d', os.path.join(get_package_share_directory('my_learning_package'), 'rviz', 'LO.rviz')]
-    # )
 
     lidar_odometry_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([os.path.join(
@@ -26,13 +19,6 @@ def generate_launch_description():
         )])
     )
 
-    # preprocessing_node = Node(
-    #     package="my_learning_package",
-    #     name="preprocessing",
-    #     executable="preprocessing",
-    #     parameters=[os.path.join(config_dir, 'preprocessing.yaml')],
-    #     # arguments=['-d', os.path.join(get_package_share_directory('my_learning_package'), 'rviz', 'LO.rviz')]
-    # )
 
     preprocessing_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([os.path.join(
@@ -47,11 +33,11 @@ def generate_launch_description():
         )])
     )
     
-    ekf_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([os.path.join(
-            get_package_share_directory(package_name),'launch','ekf.launch.py'
-        )])
-    )
+    # ekf_launch = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource([os.path.join(
+    #         get_package_share_directory(package_name),'launch','ekf.launch.py'
+    #     )])
+    # )
 
     # rsp -> robot state publisher
     rsp = IncludeLaunchDescription(

@@ -1,6 +1,6 @@
 backend:
   ros__parameters:
-    global_map_ds_leafsize: 0.02
-    global_map_update_rate: 5.0
+    global_map_ds_leafsize: 0.05
+    global_map_update_rate: 10.0
     odometry_topic: "/odom_keyframe"
-    save_pcd : True
+    save_pcd : false

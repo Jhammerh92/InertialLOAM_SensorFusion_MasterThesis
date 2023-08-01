@@ -19,6 +19,7 @@
 #include <pcl/features/normal_3d.h>
 #include <pcl/features/normal_3d_omp.h>
 #include <pcl/filters/statistical_outlier_removal.h>
+#include <pcl/filters/voxel_grid.h>
 
 // #include <cmath>
 // #include <ctime>
@@ -51,6 +52,9 @@ private:
     rclcpp::TimerBase::SharedPtr process_timer;
 
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu;
+
+
+    pcl::VoxelGrid<PointType> down_size_filter;
     // ros::Subscriber sub_imu;
 
     // ros::Publisher pub_surf;
@@ -199,6 +203,8 @@ public:
         pub_surf = this->create_publisher<sensor_msgs::msg::PointCloud2>("/surf_features", 100);
         pub_edge = this->create_publisher<sensor_msgs::msg::PointCloud2>("/edge_features", 100);
         pub_cutted_cloud = this->create_publisher<sensor_msgs::msg::PointCloud2>("/preprocessed_point_cloud", 100);
+
+        down_size_filter.setLeafSize(0.5, 0.5, 0.5);
     }
     ~Preprocessing() {}
 
@@ -291,6 +297,12 @@ public:
     double getDepth(PointT pt)
     {
         return sqrt(pt.x * pt.x + pt.y * pt.y + pt.z * pt.z);
+    }
+
+    template <typename PointT>
+    double getSqDepth(PointT pt)
+    {
+        return pt.x * pt.x + pt.y * pt.y + pt.z * pt.z;
     }
 
     template <typename PointT>
@@ -558,20 +570,31 @@ public:
             Eigen::Vector3d shooting_vector_aft = getPositionVector(cloud_in.points[i+1]); 
 
             Eigen::Vector3d step_vector_to = (shooting_vector_query - shooting_vector_fore ); //
-            Eigen::Vector3d step_vector_from = (shooting_vector_aft - shooting_vector_query ); // 
-            Eigen::Vector3d center_vector(1.0,0.0,0.0);
+            // Eigen::Vector3d step_vector_from = (shooting_vector_aft - shooting_vector_query ); // 
+            Eigen::Vector3d step_vector_across = (shooting_vector_fore - shooting_vector_aft ); // 
+            // Eigen::Vector3d center_vector(1.0,0.0,0.0);
             // double step_length = (step_vector_to.norm()*step_vector_to.norm() + step_vector_from.norm()*step_vector_from.norm());
-            double step_length = (step_vector_to.norm() + step_vector_from.norm()) * (step_vector_to.norm() + step_vector_from.norm());
-            double depth = getDepth(cloud_in.points[i]);
+            // double step_length = (step_vector_to.norm() + step_vector_from.norm()) * (step_vector_to.norm() + step_vector_from.norm());
+            double step_length = step_vector_to.norm();
+            // double depth = getDepth(cloud_in.points[i]);
             // double cos_angle = abs(step_vector_to.normalized().dot(shooting_vector_fore.normalized()));
-            double cos_angle_from_center = abs(center_vector.dot(shooting_vector_query.normalized()));
-            double scan_wander = (shooting_vector_fore.normalized() - shooting_vector_aft.normalized()).norm()*depth;
-            scan_wander *= scan_wander;
+            // double cos_angle_from_center = abs(center_vector.dot(shooting_vector_query.normalized()));
+            // double scan_wander = (shooting_vector_fore.normalized() - shooting_vector_aft.normalized()).norm()*depth;
+            // scan_wander *= scan_wander;
             // double distance_to_shooting_vector = step_vector_to.cross(shooting_vector_fore).norm() / shooting_vector_fore.norm();
+            
+            double intensity = (double)floor(cloud_in.points[i].intensity);
 
+
+
+            double cos_angle = abs(step_vector_across.normalized().dot(shooting_vector_query.normalized()));
             // if (distance_to_shooting_vector < remove_transition_outliers_cos_angle_threshold_ && cos_angle >= 0.9986){ 
-            if (step_length * (1.0/ (cos_angle_from_center*cos_angle_from_center))/(scan_wander) > remove_transition_outliers_cos_angle_threshold_  ) {//&& cos_angle >= 0.9986){ 
-            // if (cos_angle > remove_transition_outliers_cos_angle_threshold_){ 
+            // if (step_length * (1.0/ (cos_angle_from_center*cos_angle_from_center))/(scan_wander) > remove_transition_outliers_cos_angle_threshold_  ) {//&& cos_angle >= 0.9986){ 
+            bool incidence = cos_angle > remove_transition_outliers_cos_angle_threshold_ ;
+            // bool hidden = step_length >= 0.1 * shooting_vector_query.norm() && shooting_vector_query.norm() > shooting_vector_fore.norm();
+            bool hidden = false;
+            bool intensity_thresh = intensity < 0.0  || intensity > 260.0;
+            if (incidence || hidden || intensity_thresh){ 
             // if (distance_to_shooting_vector < remove_transition_outliers_cos_angle_threshold_){ 
                 // RCLCPP_INFO(get_logger(), "point %i removed cos angle = %f", i, cos_angle);
                 // RCLCPP_INFO(get_logger(), "scan_wander %f", scan_wander);
@@ -636,14 +659,13 @@ public:
     void normalizeIntensities(const pcl::PointCloud<PointT> &cloud_in, pcl::PointCloud<PointType> &cloud_out)
     {
         double range_reference = normalize_intensities_reference_range_; // could be actively determined from cloudscale..
-        double range = 0.0;
         double intensity_normalized = 0.0;
         Eigen::Vector3d range_vector(0.0, 0.0, 0.0);
         Eigen::Vector3d normal_vector(0.0, 0.0, 0.0);
         // double max_intesity = std::numeric_limits<double>::min ();
         for (size_t i = 0; i < cloud_in.points.size(); ++i)
         {
-            range = getDepth(cloud_in.points[i]);
+            double range = getDepth(cloud_in.points[i]);
             normal_vector = getSurfaceNormal(cloud_in.points[i]);
             range_vector = -getNormalizedPositionVector(cloud_in.points[i]);
             double cos_incidence_angle = abs(range_vector.transpose() * normal_vector);
@@ -727,6 +749,21 @@ public:
         }
     }
 
+    template <typename PointT>
+    void embedPointTimeVelodyne(const boost::shared_ptr<pcl::PointCloud<PointT>> &cloud_in, boost::shared_ptr<pcl::PointCloud<PointT>> &cloud_out,  const double scan_dt){
+        double scan_time = scan_dt;
+        // double scan_time = 0.1;
+        double point_dt = scan_time / cloud_in->points.size();
+
+        for (size_t i=0; i < cloud_in->points.size(); i++){
+            double azimuth = std::atan2(cloud_out->points[i].x, cloud_out->points[i].y) + cloud_out->points[i].x < 0 ? 2.0 * M_PI: 0;
+            double c = azimuth / (2.0 * M_PI);
+            double dt_i = point_dt * c; // +1 because the last point in the previous scan is considered t=0 therefore first(zeroth) point in this scan is at t=1*dt
+            // this also makes sure that the full scan_time is imbedded in the final point, and can be retrieved for later use. 
+            cloud_out->points[i].intensity += dt_i;
+        }
+    }
+
     void processNext()
     {
 
@@ -765,7 +802,12 @@ public:
         #endif
 
         // imbed the scan time of the individual point to the intesity value which is then the integer part, and the time is the fractional part
-        embedPointTime(lidar_cloud_in_no_normals, lidar_cloud_in_no_normals, time_scan_next - time_scan);
+        if ( lidar_source_topic_.compare("/velodyne") ==0) {
+            // embedPointTimeVelodyne(lidar_cloud_in_no_normals, lidar_cloud_in_no_normals, time_scan_next - time_scan);
+            embedPointTime(lidar_cloud_in_no_normals, lidar_cloud_in_no_normals, time_scan_next - time_scan);
+        } else {
+            embedPointTime(lidar_cloud_in_no_normals, lidar_cloud_in_no_normals, time_scan_next - time_scan);
+        }
 
 
         // UNDISTORTION SHOULD BE THE FIRST PROCESSING STEP
@@ -800,9 +842,14 @@ public:
 
         // ESSENTIAL PREPROCESSING
         removeClosedPointCloud(*lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals, filter_close_points_distance_m_); // removes invalid points within a distance of x m from the center of the lidar
-        // removeTransitionOutliers(*lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals);
+        removeTransitionOutliers(*lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals);
         removeStatisticalOutliers(lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals);
-        pcl::copyPointCloud(*lidar_cloud_in_no_normals, *lidar_cloud_in); // change pointtype to point with normal data
+        pcl::copyPointCloud(*lidar_cloud_in_no_normals, *lidar_cloud_in); // change pointtype to point cloud with normal data
+        if ( lidar_source_topic_.compare("/velodyne") ==0) { // downsample if cloud is from velodyne
+            down_size_filter.setInputCloud(lidar_cloud_in);
+            down_size_filter.filter(*lidar_cloud_in);
+        } else {
+        }
         calculatePointNormals(lidar_cloud_in, *lidar_cloud_in); // openMP multi-processing accelerated
 
         // NON-ESSENTIAL PREPROCESSING. The if statements are slow and therefore uncommented. This needs a complex solution to determine bools at compile time 

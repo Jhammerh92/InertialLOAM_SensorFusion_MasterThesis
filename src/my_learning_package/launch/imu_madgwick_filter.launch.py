@@ -19,7 +19,7 @@ def generate_launch_description():
         executable="imu_filter_madgwick_node",
         parameters=[os.path.join(config_dir, 'imu_filter_odom.yaml'),
                                     {"use_mag" : False,
-                                     "gain": 0.1,
+                                     "gain": 0.3,
                                      "remove_gravity_vector": True,
                                      "constant_dt": 0.01 }],
         # arguments=['-p','use_mag:=false'],

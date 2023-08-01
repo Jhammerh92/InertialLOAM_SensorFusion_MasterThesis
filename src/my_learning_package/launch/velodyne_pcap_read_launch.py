@@ -18,7 +18,7 @@ def generate_launch_description():
             # {"pcap":r"/media/slamnuc/HAMMER DATA 2TB/DTU_LIDAR_20220523/20220523_124156/VLP16_lidar_ts_01.pcap"}, # hardcoded data path
             {"read_once":True},
             {"read_fast":False}, ## realtime or as fast as possible. In post-processing it might be advantagoues to do as fast as possible, but still making sure all msg are recieved
-            {"cut_angle": pi}
+            {"cut_angle": 2*pi}
         ]
     )
     
