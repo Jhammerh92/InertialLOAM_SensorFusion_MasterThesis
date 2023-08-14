@@ -7,10 +7,10 @@
 
 using namespace std::chrono_literals;
 
-class MinimalPublisher : public rclcpp::Node // inheritance here?
+class MinimalPublisher : public rclcpp::Node // inheritance here  from ROS RCLCPP node type
 {
     public:
-        MinimalPublisher() // constructer?
+        MinimalPublisher() // constructor
         : Node("hello_publisher")
         {
             publisher_ = this->create_publisher<std_msgs::msg::String>("hello_topic",1);

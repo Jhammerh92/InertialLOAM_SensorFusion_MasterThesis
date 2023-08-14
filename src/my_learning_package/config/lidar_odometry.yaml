@@ -1,7 +1,7 @@
 lidar_odometry:
   ros__parameters:
     # downsampling parameters
-    ds_voxel_size: 0.00 # <0.05
+    ds_voxel_size: 0.1 # <0.05
     ds_voxel_size_lc: 0.01 # 0.01
     use_cloud_scale_for_ds: false # if this is false above are used, if true below are used
     cloud_scale_previuos_cloud_weight: 0.9 # 0-1
@@ -15,11 +15,11 @@ lidar_odometry:
     # scan matching parameters
     scan_matching_method: 0 # 0 ICP-p2pl, 1 GICP, 2 NDT-p2d
     icp_max_iterations: 25 # 10-30
-    icp_max_coarse_iterations: 5 # 10-30
+    icp_max_coarse_iterations: 0 # 10-30
     icp_max_correspondence_distance: 0.01 # should be less than voxelsize of source
     coarse_correspondence_factor: 50
-    local_map_width: 150 # if 0 all previous keyframes are pushed to local map indefinitely
-    local_map_init_frames_count: 50
+    local_map_width: 50 # if 0 all previous keyframes are pushed to local map indefinitely
+    local_map_init_frames_count: 10
 
     # imu fusion parameters
     imu_topic: "/imu/data"

@@ -19,7 +19,9 @@ class MinimalSubscriber : public rclcpp::Node
             {
                 RCLCPP_INFO(this->get_logger(),"Recieved message: %s", message->data.c_str());
             }
-            rclcpp::Subscription<std_msgs::msg::String>::SharedPtr subscriber_;
+        
+        
+        rclcpp::Subscription<std_msgs::msg::String>::SharedPtr subscriber_;
 };
 
 int main(int argc, char * argv[])
