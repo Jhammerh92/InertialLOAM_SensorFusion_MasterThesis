@@ -53,6 +53,12 @@ def generate_launch_description():
                     get_package_share_directory(package_name),'launch','imu_run.launch.py'
                 )])
     )
+
+    # madgwick_filter_launch = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource([os.path.join(
+    #         get_package_share_directory('my_learning_package'),'launch','imu_madgwick_filter.launch.py'
+    #     )])
+    # )
     
     # bag_node = ExecuteProcess(
     #         cmd=['ros2', 'bag', 'record'] +  recorded_topics + [ '-o', os.path.join(recordings_dir, recording_name)],
@@ -78,6 +84,6 @@ def generate_launch_description():
     ld.add_action(lidar_driver_node)
     ld.add_action(imu_launch)
     ld.add_action(transform_node_livox)
-    # ld.add_action(bag_node)
+    # ld.add_action(madgwick_filter_launch)
 
     return ld

@@ -1,0 +1,6 @@
+static_recorder:
+  ros__parameters:
+    record_time: 10.0
+    interval_time: 15.0
+    save_path: "static_recorded_clouds"
+    

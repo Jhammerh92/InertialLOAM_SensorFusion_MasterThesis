@@ -18,7 +18,8 @@ def generate_launch_description():
     recorded_topics = ["/livox/lidar", "/imu/data_raw", "/imu/acceleration", "/imu/angular_velocity", "/imu/mag", "/imu/time_ref"]
 
     now = datetime.now()
-    dt_string = now.strftime("%d%m%Y_%H%M%S")
+    # dt_string = now.strftime("%d%m%Y_%H%M%S") --> leads to bad sorting of files in terminal
+    dt_string = now.strftime("%Y%m%d_%H%M%S")
 
     # config_dir = os.path.join(get_package_share_directory('my_learning_package'), 'config')
     recordings_dir = r'/home/slamnuc/bagfiles'

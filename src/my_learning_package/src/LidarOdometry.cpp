@@ -32,8 +32,8 @@
 
 
 #include <pcl/common/common.h>
-#include <pcl/common/centroid.h>
 #include <pcl/point_cloud.h>
+#include <pcl/common/centroid.h>
 #include <pcl/point_types.h>
 #include <pcl/conversions.h>
 #include <pcl/filters/filter.h>
@@ -50,6 +50,7 @@
 // #include <fast_pcl/registration/ndt.h>
 
 // #include <pclomp/gicp_omp.h>
+// #include <pclomp/gicp_omp_impl.hpp>
 // #include <pclomp/gicp_omp.h>
 
 #include <cmath>
@@ -462,6 +463,7 @@ class LidarOdometry : public rclcpp::Node
 
             declare_parameter("save_running_data", true); 
             get_parameter("save_running_data", save_running_data_);
+            
             declare_parameter("save_path", "temp_saved_odometry_data/run_data.csv"); 
             get_parameter("save_path", save_path_);
 
@@ -587,8 +589,7 @@ class LidarOdometry : public rclcpp::Node
             auto t = std::time(nullptr);
             auto tm = *std::localtime(&t);
             std::ostringstream oss;
-            // oss << std::put_time(&tm, "%d-%m-%Y %H-%M-%S");
-            oss << std::put_time(&tm, "%Y%m%d-%H%M%S");
+            oss << std::put_time(&tm, "%Y%m%d_%H%M%S");
             std::string datestr = oss.str();
 
             if (!save_running_data_)

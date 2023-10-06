@@ -8,7 +8,7 @@ endif()
 
 # Default to C++14
 if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
+  set(CMAKE_CXX_STANDARD 17)
 endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -30,8 +30,10 @@ find_package(nav_msgs REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(pcl_ros REQUIRED)
 # find_package(ndt_omp_ros2 REQUIRED)
+# find_package(PCL REQUIRED)
 # find_package(pclomp REQUIRED)
 # uncomment the following section in order to fill in
+
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
@@ -86,6 +88,9 @@ ament_target_dependencies(preprocessing_velodyne ${dependencies})
 add_executable(lidar_odometry_velodyne src/LidarOdometryVelodyne.cpp)
 ament_target_dependencies(lidar_odometry_velodyne ${dependencies})
 
+add_executable(static_recorder src/StaticRecord.cpp)
+ament_target_dependencies(static_recorder ${dependencies})
+
 add_executable(my_test_node src/my_test_node.cpp)
 
 target_include_directories(my_test_node PUBLIC
@@ -114,6 +119,7 @@ install(TARGETS
   # format_convert
   preprocessing_velodyne
   lidar_odometry_velodyne
+  static_recorder
   DESTINATION lib/${PROJECT_NAME}
 )
 

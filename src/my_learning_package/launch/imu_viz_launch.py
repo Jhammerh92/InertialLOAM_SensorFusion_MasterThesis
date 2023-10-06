@@ -15,7 +15,7 @@ def generate_launch_description():
     rviz2_node = Node(
         package="rviz2",
         executable="rviz2",
-        arguments=['-d', os.path.join(get_package_share_directory('my_learning_package'), 'rviz', 'IMU2.rviz')]
+        # arguments=['-d', os.path.join(get_package_share_directory('my_learning_package'), 'rviz', 'IMU2.rviz')]
     )
     # print('-d ' +os.path.join(get_package_share_directory('my_learning_package'), 'rviz', 'LO.rviz'))
 
