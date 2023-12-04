@@ -1,19 +1,19 @@
 
 #define BOOST_BIND_NO_PLACEHOLDERS
 
+#include "my_learning_package/utils/common.hpp"
+
 #include "rclcpp/rclcpp.hpp"
 
 #include "geometry_msgs/msg/vector3_stamped.hpp"
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <geometry_msgs/msg/wrench_stamped.hpp>
-// #include <sensor_msgs/msg/point_cloud2.hpp>
-// #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/msg/imu.hpp>
 
 #include <nav_msgs/msg/odometry.hpp>
 #include <nav_msgs/msg/path.hpp>
 
-#include <pcl/common/common.h>
+//#include <pcl/common/common.h>
 // #include <pcl/common/transforms.h>
 // #include <pcl/point_cloud.h>
 // #include <pcl/point_types.h>
@@ -21,9 +21,6 @@
 // #include <pcl/filters/filter.h>
 // #include <pcl/filters/voxel_grid.h>
 // #include <pcl_conversions/pcl_conversions.h>
-
-
-
 
 #include <memory>
 #include <cstdio>
@@ -37,48 +34,6 @@ using namespace std;
 
 using std::placeholders::_1;
 
-// struct PoseInfo
-// {
-//     double x;
-//     double y;
-//     double z;
-//     double qw;
-//     double qx;
-//     double qy;
-//     double qz;
-//     int idx;
-//     double time;
-//     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-// } EIGEN_ALIGN16;
-
-// POINT_CLOUD_REGISTER_POINT_STRUCT (PoseInfo,
-//                                    (double, x, x) (double, y, y) (double, z, z)
-//                                    (double, qw, qw) (double, qx, qx) (double, qy, qy) (double, qz, qz)
-//                                    (int, idx, idx) (double, time, time)
-//                                    )
-
-
-
-// put the following in a genereal header..
-// typedef pcl::PointXYZINormal PointType; // need to calculate and assign normals
-// typedef pcl::PointXYZINormal PointType; // need to calculate and assign normals
-
-struct IMUwrench
-{
-    Eigen::Vector3d acc;
-    Eigen::Vector3d ang;
-    double time;
-};
-
-struct INSstate
-{
-    Eigen::Vector3d acc;
-    Eigen::Vector3d vel;
-    Eigen::Vector3d pos;
-    Eigen::Quaterniond ori;
-    double time;
-    IMUwrench bias;
-};
 
 class INS : public rclcpp::Node
 {
@@ -90,9 +45,6 @@ class INS : public rclcpp::Node
         rclcpp::CallbackGroup::SharedPtr correction_cb_group_;
         rclcpp::TimerBase::SharedPtr run_timer;
         rclcpp::TimerBase::SharedPtr correction_timer;
-
-        
-
 
         rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub;
         rclcpp::Subscription<geometry_msgs::msg::WrenchStamped>::SharedPtr bias_sub;
@@ -495,6 +447,7 @@ class INS : public rclcpp::Node
                 updateGravityCalibration(acceleration_in, toSec(delayed_imu_data->header.stamp));
                 // }
 
+                RCLCPP_INFO_ONCE(get_logger(), "publish INS");
                 publishINS();
 
 

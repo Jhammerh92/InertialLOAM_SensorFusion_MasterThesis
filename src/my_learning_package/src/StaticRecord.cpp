@@ -1,9 +1,5 @@
 #define BOOST_BIND_NO_PLACEHOLDERS
 
-#include <chrono>
-#include <memory>
-#include <cstdio>
-#include <filesystem>
 #include "rclcpp/rclcpp.hpp"
 // #include "std_msgs/msg/string.hpp"
 
@@ -15,6 +11,10 @@
 #include <pcl/point_cloud.h>
 #include <pcl_conversions/pcl_conversions.h>
 
+#include <chrono>
+#include <memory>
+#include <cstdio>
+#include <filesystem>
 #include <queue>
 
 // typedef pcl::PointXYZINormal PointType; // need to calculate and assign normals
@@ -70,7 +70,6 @@ class StaticRecorder : public rclcpp::Node // inheritance here  from ROS RCLCPP 
             pointcloud_sub_ = this->create_subscription<PC_msg>("/livox/lidar", 100, std::bind(&StaticRecorder::cloudHandler, this, _1));
         
             // create folder for recording
-
             auto t = std::time(nullptr);
             auto tm = *std::localtime(&t);
             std::ostringstream oss;

@@ -1,0 +1,5 @@
+imu_hap_converter:
+  ros__parameters:
+    imu_topic: "/imu/data_HAP"
+    g_scale: 9.815
+    

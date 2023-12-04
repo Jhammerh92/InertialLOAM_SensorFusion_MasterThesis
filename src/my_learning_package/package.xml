@@ -19,6 +19,7 @@
   <depend>tf2_geometry_msgs</depend>
   <!-- <depend>sensor_msgs</depend> -->
   <!-- <depend>pclomp</depend> -->
+  <depend>ndt_omp_ros2</depend>
 
 
   <exec_depend>velodyne_driver</exec_depend>

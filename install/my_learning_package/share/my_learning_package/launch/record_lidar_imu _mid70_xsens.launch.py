@@ -1,0 +1,1 @@
+/home/slamnuc/ros2_learning_ws/src/my_learning_package/launch/record_lidar_imu _mid70_xsens.launch.py

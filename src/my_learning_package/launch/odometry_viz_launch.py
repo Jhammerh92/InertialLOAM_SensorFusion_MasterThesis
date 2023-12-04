@@ -47,6 +47,12 @@ def generate_launch_description():
         arguments = [ '0.021', '0', '-0.192', '0', '0', '0', 'global_map', 'odom']
     )
 
+    transform_node_long_term_map_odom = Node( # this should change in the future if the map is ever going to be firm and disconnected from odometry
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        arguments = [ '0', '0', '0', '0', '0', '0', 'global_map', 'long_term_map']
+    )
+
     # transform_node_global_map = Node(
     #     package='tf2_ros',
     #     executable='static_transform_publisher',
@@ -60,6 +66,7 @@ def generate_launch_description():
     ld.add_action(rviz2_node)
     ld.add_action(transform_node_global_map_lidar_odom)
     ld.add_action(transform_node_global_map_odom)
+    ld.add_action(transform_node_long_term_map_odom)
     # ld.add_action(transform_node_livox)
     # ld.add_action(transform_node_preproc)
     ld.add_action(transform_node_odom)

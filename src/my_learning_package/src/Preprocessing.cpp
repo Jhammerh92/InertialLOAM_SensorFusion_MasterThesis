@@ -81,6 +81,8 @@ private:
     double current_time_imu = -1;
     double lidar_zero_time = -1;
 
+    deque<double> scan_dts;
+
     Eigen::Vector3d gyr_0;
     Eigen::Quaterniond q_iMU = Eigen::Quaterniond::Identity();
     bool first_imu = true;
@@ -99,10 +101,13 @@ private:
     string frame_id = "lidar_odom";
     string lidar_source_topic_ = "";
     double runtime = 0;
+
+    double frame_procces_time;
     // ---- ROSPARAMETERS -----
 
     double edge_threshold_;
     double surfaces_threshold_;
+
 
     // double normal_search_radius = 0.2; // small scale / indoors
     double pc_normal_search_radius_; // large scale / outdoors
@@ -110,6 +115,7 @@ private:
 
     double filter_close_points_distance_m_;
     bool use_gyroscopic_undistortion_{};
+    double pre_downsample_leaf_size_;
 
     int remove_statistical_outliers_knn_points_;
     double remove_statistical_outliers_std_mul_;
@@ -121,11 +127,14 @@ private:
 public:
     Preprocessing() : rclcpp::Node("preprocessing")
     {
-        declare_parameter("filter_close_points_distance_m", 0.1);
+        declare_parameter("filter_close_points_distance_m", 0.5);
         get_parameter("filter_close_points_distance_m", filter_close_points_distance_m_);
 
         declare_parameter("use_gyroscopic_undistortion", false);
         get_parameter("use_gyroscopic_undistortion", use_gyroscopic_undistortion_);
+
+        declare_parameter("pre_downsample_leaf_size", 0.0);
+        get_parameter("pre_downsample_leaf_size", pre_downsample_leaf_size_);
 
         declare_parameter("pc_normal_search_radius", 0.0);
         get_parameter("pc_normal_search_radius", pc_normal_search_radius_);
@@ -170,6 +179,9 @@ public:
 
 
         RCLCPP_INFO(get_logger(), "\033[1;32m---->\033[0m Preprocessing Started.");
+        if (pre_downsample_leaf_size_ > 0.0){
+            RCLCPP_INFO(get_logger(), "OBS clouds are downsampled in preprocessing, leafsize is: %f", pre_downsample_leaf_size_);
+        }
         // if (!getParameter("/preprocessing/surf_thres", surf_thres))
         // {
         //     ROS_WARN("surf_thres not set, use default value: 0.2");
@@ -200,13 +212,13 @@ public:
 
         // sub_imu = nh.subscribe<sensor_msgs::Imu>("/livox/imu", 200, &Preprocessing::imuHandler, this);
 
-        pub_surf = this->create_publisher<sensor_msgs::msg::PointCloud2>("/surf_features", 100);
-        pub_edge = this->create_publisher<sensor_msgs::msg::PointCloud2>("/edge_features", 100);
+        // pub_surf = this->create_publisher<sensor_msgs::msg::PointCloud2>("/surf_features", 100);
+        // pub_edge = this->create_publisher<sensor_msgs::msg::PointCloud2>("/edge_features", 100);
         pub_cutted_cloud = this->create_publisher<sensor_msgs::msg::PointCloud2>("/preprocessed_point_cloud", 100);
 
-        down_size_filter.setLeafSize(0.5, 0.5, 0.5);
+        down_size_filter.setLeafSize(pre_downsample_leaf_size_, pre_downsample_leaf_size_, pre_downsample_leaf_size_);
     }
-    ~Preprocessing() {}
+    ~Preprocessing(){}
 
 
 
@@ -569,13 +581,13 @@ public:
             Eigen::Vector3d shooting_vector_query = getPositionVector(cloud_in.points[i]); // Q
             Eigen::Vector3d shooting_vector_aft = getPositionVector(cloud_in.points[i+1]); 
 
-            Eigen::Vector3d step_vector_to = (shooting_vector_query - shooting_vector_fore ); //
+            // Eigen::Vector3d step_vector_to = (shooting_vector_query - shooting_vector_fore ); //
             // Eigen::Vector3d step_vector_from = (shooting_vector_aft - shooting_vector_query ); // 
             Eigen::Vector3d step_vector_across = (shooting_vector_fore - shooting_vector_aft ); // 
             // Eigen::Vector3d center_vector(1.0,0.0,0.0);
             // double step_length = (step_vector_to.norm()*step_vector_to.norm() + step_vector_from.norm()*step_vector_from.norm());
             // double step_length = (step_vector_to.norm() + step_vector_from.norm()) * (step_vector_to.norm() + step_vector_from.norm());
-            double step_length = step_vector_to.norm();
+            // double step_length = step_vector_to.norm();
             // double depth = getDepth(cloud_in.points[i]);
             // double cos_angle = abs(step_vector_to.normalized().dot(shooting_vector_fore.normalized()));
             // double cos_angle_from_center = abs(center_vector.dot(shooting_vector_query.normalized()));
@@ -737,10 +749,10 @@ public:
 
     template <typename PointT>
     void embedPointTime(const boost::shared_ptr<pcl::PointCloud<PointT>> &cloud_in, boost::shared_ptr<pcl::PointCloud<PointT>> &cloud_out, const double scan_dt){
-        double scan_time = scan_dt;
+        // double scan_time = scan_dt;
         // double scan_time = 0.1;
-        double point_dt = scan_time / cloud_in->points.size();
-
+        double point_dt = scan_dt / cloud_in->points.size();
+        
         for (size_t i=0; i < cloud_in->points.size(); i++){
 
             double dt_i = point_dt * (i+1); // +1 because the last point in the previous scan is considered t=0 therefore first(zeroth) point in this scan is at t=1*dt
@@ -764,9 +776,40 @@ public:
         }
     }
 
+
+    double validateScanTime(double new_dt)
+    {
+        if (scan_dts.size() < 30){
+            scan_dts.push_front(new_dt);
+            // RCLCPP_INFO(get_logger(), "scan time %f", new_dt);
+            return new_dt;
+        }
+
+        size_t n = scan_dts.size();
+        double sum = 0.0;
+        double sum_sq = 0.0;
+        for (size_t i=0; i < n; i++){
+            sum += scan_dts[i];
+            sum_sq += scan_dts[i]*scan_dts[i];
+        }
+        double mean_dt = sum / (double)n;
+        double std_dt = sqrt((sum_sq)/(double)n - mean_dt*mean_dt );
+
+        if (abs(new_dt - mean_dt) > 10.0*std_dt){
+            RCLCPP_WARN(get_logger(), "Bad scan dt detected!! %f,  using mean instead %f.", new_dt, mean_dt );
+            return mean_dt;
+        }
+        // RCLCPP_INFO(get_logger(), "scan time %f,  mean %f, std %f.", new_dt, mean_dt, std_dt);
+
+        scan_dts.pop_back();
+        scan_dts.push_front(new_dt);
+
+        return new_dt;
+    }
+
     void processNext()
     {
-
+        rclcpp::Clock system_clock;
         // get next frame in buffer..
         if (cloud_queue.size() <= 1) // leave atleast 1, to get the time of the next cloud.. (or set next time to + 0.1 (scanning time) staticly)
         {
@@ -787,9 +830,13 @@ public:
 
             if (cloud_queue.size() > 5)
             {
-                RCLCPP_WARN(get_logger(), "Buffer size is: %i", cloud_queue.size());
+                RCLCPP_WARN(get_logger(), "Buffer size is: %i, previous frame process time was: %fs", cloud_queue.size(), frame_procces_time);
+                // RCLCPP_WARN(get_logger(), "Buffer size is: %i", cloud_queue.size());
             }
         }
+        // RCLCPP_INFO(get_logger(), "Previous frame process time was: %fs", frame_procces_time);
+
+        rclcpp::Time time_preproc_start = system_clock.now();
 
         latest_frame_idx++;
         if (latest_frame_idx < start_idx_ || (latest_frame_idx > end_idx_ && end_idx_ > 0) ){
@@ -802,16 +849,26 @@ public:
         #endif
 
         // imbed the scan time of the individual point to the intesity value which is then the integer part, and the time is the fractional part
-        if ( lidar_source_topic_.compare("/velodyne") ==0) {
-            // embedPointTimeVelodyne(lidar_cloud_in_no_normals, lidar_cloud_in_no_normals, time_scan_next - time_scan);
-            embedPointTime(lidar_cloud_in_no_normals, lidar_cloud_in_no_normals, time_scan_next - time_scan);
-        } else {
-            embedPointTime(lidar_cloud_in_no_normals, lidar_cloud_in_no_normals, time_scan_next - time_scan);
+        // if ( lidar_source_topic_.compare("/velodyne") ==0) {
+        //     // embedPointTimeVelodyne(lidar_cloud_in_no_normals, lidar_cloud_in_no_normals, time_scan_next - time_scan);
+        //     embedPointTime(lidar_cloud_in_no_normals, lidar_cloud_in_no_normals, time_scan_next - time_scan);
+        // } else {
+
+
+        if ( lidar_source_topic_.compare("/velodyne") == 0 || pre_downsample_leaf_size_ > 0.0) { // downsample if cloud is from velodyne
+            down_size_filter.setInputCloud(lidar_cloud_in);
+            down_size_filter.filter(*lidar_cloud_in);
         }
+
+        double scan_dt = time_scan_next - time_scan;
+        scan_dt = validateScanTime(scan_dt); // safeguard againt hitches/pauses in the recording
+        embedPointTime(lidar_cloud_in_no_normals, lidar_cloud_in_no_normals, scan_dt);
+
 
 
         // UNDISTORTION SHOULD BE THE FIRST PROCESSING STEP
-        if (use_gyroscopic_undistortion_){
+        if (use_gyroscopic_undistortion_)
+        {
             // imu_stuff..
             int tmp_idx = 0;
             if(idx_imu > 0) 
@@ -842,15 +899,13 @@ public:
 
         // ESSENTIAL PREPROCESSING
         removeClosedPointCloud(*lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals, filter_close_points_distance_m_); // removes invalid points within a distance of x m from the center of the lidar
-        removeTransitionOutliers(*lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals);
+        // removeTransitionOutliers(*lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals);
         removeStatisticalOutliers(lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals);
         pcl::copyPointCloud(*lidar_cloud_in_no_normals, *lidar_cloud_in); // change pointtype to point cloud with normal data
-        if ( lidar_source_topic_.compare("/velodyne") ==0) { // downsample if cloud is from velodyne
-            down_size_filter.setInputCloud(lidar_cloud_in);
-            down_size_filter.filter(*lidar_cloud_in);
-        } else {
+
+        if (pc_normal_knn_points_ > 0 || pc_normal_search_radius_ > 0.0){
+            calculatePointNormals(lidar_cloud_in, *lidar_cloud_in); // openMP multi-processing accelerated
         }
-        calculatePointNormals(lidar_cloud_in, *lidar_cloud_in); // openMP multi-processing accelerated
 
         // NON-ESSENTIAL PREPROCESSING. The if statements are slow and therefore uncommented. This needs a complex solution to determine bools at compile time 
         if (normalize_intensities_reference_range_ > 0.0)
@@ -870,30 +925,30 @@ public:
 
 
 
-        pcl::PointCloud<PointType>::Ptr surf_features = boost::make_shared<pcl::PointCloud<PointType>>(); // (new pcl::PointCloud<PointType>()); // boost shared ptr??
-        pcl::PointCloud<PointType>::Ptr edge_features = boost::make_shared<pcl::PointCloud<PointType>>(); // (new pcl::PointCloud<PointType>());
+        // pcl::PointCloud<PointType>::Ptr surf_features = boost::make_shared<pcl::PointCloud<PointType>>(); // (new pcl::PointCloud<PointType>()); // boost shared ptr??
+        // pcl::PointCloud<PointType>::Ptr edge_features = boost::make_shared<pcl::PointCloud<PointType>>(); // (new pcl::PointCloud<PointType>());
 
-        // TODO separte these into two function such that edge points can be extracted without using processing power for surf points? -> doesn't matter as it loops once..
-        assignEdgeAndSurface(edge_features, surf_features);
+        // // TODO separte these into two function such that edge points can be extracted without using processing power for surf points? -> doesn't matter as it loops once..
+        // assignEdgeAndSurface(edge_features, surf_features);
 
 
         // TODO make a toROSMsg overload in a header using the intellisense block out!
         // publish clouds created by the preprocessor
-        sensor_msgs::msg::PointCloud2 surf_features_msg;
-#ifndef __INTELLISENSE__
-        pcl::toROSMsg(*surf_features, surf_features_msg);
-#endif
-        surf_features_msg.header.stamp = cloud_header.stamp;
-        surf_features_msg.header.frame_id = frame_id;
-        pub_surf->publish(surf_features_msg);
+//         sensor_msgs::msg::PointCloud2 surf_features_msg;
+// #ifndef __INTELLISENSE__
+//         pcl::toROSMsg(*surf_features, surf_features_msg);
+// #endif
+//         surf_features_msg.header.stamp = cloud_header.stamp;
+//         surf_features_msg.header.frame_id = frame_id;
+//         pub_surf->publish(surf_features_msg);
 
-        sensor_msgs::msg::PointCloud2 edge_features_msg;
-#ifndef __INTELLISENSE__
-        pcl::toROSMsg(*edge_features, edge_features_msg);
-#endif
-        edge_features_msg.header.stamp = cloud_header.stamp;
-        edge_features_msg.header.frame_id = frame_id;
-        pub_edge->publish(edge_features_msg);
+//         sensor_msgs::msg::PointCloud2 edge_features_msg;
+// #ifndef __INTELLISENSE__
+//         pcl::toROSMsg(*edge_features, edge_features_msg);
+// #endif
+//         edge_features_msg.header.stamp = cloud_header.stamp;
+//         edge_features_msg.header.frame_id = frame_id;
+//         pub_edge->publish(edge_features_msg);
 
         sensor_msgs::msg::PointCloud2 cloud_cutted_msg;
 #ifndef __INTELLISENSE__
@@ -903,6 +958,9 @@ public:
         cloud_cutted_msg.header.frame_id = frame_id;
         pub_cutted_cloud->publish(cloud_cutted_msg);
 
+        rclcpp::Time time_preproc_end = system_clock.now();
+
+        frame_procces_time = time_preproc_end.seconds() - time_preproc_start.seconds();
         // q_iMU = Eigen::Quaterniond::Identity();
         // t_pre.tic_toc();
         // runtime += t_pre.toc();

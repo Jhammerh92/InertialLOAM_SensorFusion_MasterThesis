@@ -29,15 +29,30 @@ find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(pcl_ros REQUIRED)
-# find_package(ndt_omp_ros2 REQUIRED)
-# find_package(PCL REQUIRED)
-# find_package(pclomp REQUIRED)
+find_package(ndt_omp_ros2 REQUIRED)
+find_package(PCL REQUIRED)
+find_package(pclomp REQUIRED)
+find_package(OpenMP)
 # uncomment the following section in order to fill in
-
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
-set(dependencies "std_msgs" "std_srvs" "rclcpp" "geometry_msgs" "sensor_msgs" "tf2" "tf2_geometry_msgs" "sensor_msgs" "pcl_conversions" "pcl_ros" "nav_msgs")
+if (OPENMP_FOUND)
+    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+endif()
+
+
+include_directories(
+  include
+  ${EIGEN3_INCLUDE_DIR}
+  ${PCL_INCLUDE_DIRS}
+)
+link_directories(
+  ${PCL_LIBRARY_DIRS}
+)
+
+set(dependencies "std_msgs" "std_srvs" "rclcpp" "geometry_msgs" "sensor_msgs" "tf2" "tf2_geometry_msgs" "sensor_msgs" "pcl_conversions" "pcl_ros" "nav_msgs" "ndt_omp_ros2")
 
 # add_executable(hello_publisher src/hello_publisher.cpp)
 # ament_target_dependencies(hello_publisher ${dependencies})
@@ -91,15 +106,19 @@ ament_target_dependencies(lidar_odometry_velodyne ${dependencies})
 add_executable(static_recorder src/StaticRecord.cpp)
 ament_target_dependencies(static_recorder ${dependencies})
 
+add_executable(imu_HAP_converter src/imu_HAP_converter.cpp)
+ament_target_dependencies(imu_HAP_converter ${dependencies})
+
 add_executable(my_test_node src/my_test_node.cpp)
 
 target_include_directories(my_test_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 
-# target_include_directories(lidar_odometry PUBLIC
-#   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-#   $<INSTALL_INTERFACE:include>)
+target_include_directories(ins PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+
 
 install(TARGETS 
   # my_test_node
@@ -120,9 +139,16 @@ install(TARGETS
   preprocessing_velodyne
   lidar_odometry_velodyne
   static_recorder
+  imu_HAP_converter
   DESTINATION lib/${PROJECT_NAME}
 )
 
+## Mark cpp header files for installation
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION include/${PROJECT_NAME}
+  FILES_MATCHING PATTERN "*.hpp"
+  PATTERN ".svn" EXCLUDE
+)
 
 install(DIRECTORY
   launch

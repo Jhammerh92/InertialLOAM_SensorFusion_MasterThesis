@@ -60,6 +60,67 @@ using pcl::PointXYZINormal;
 typedef pcl::PointXYZINormal PointType;
 
 
+typedef pcl::PointXYZINormal PointType; // need to calculate and assign normals
+typedef sensor_msgs::msg::PointCloud2 PC_msg;
+
+
+struct Pose
+{
+    Eigen::Vector3d position;
+    Eigen::Vector3d velocity;
+    Eigen::Quaterniond orientation;
+    pcl::PointCloud<PointType>::Ptr pointcloud;
+    Eigen::Matrix4d matrix;
+    int idx;
+    int frame_idx;
+    double time;
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+} EIGEN_ALIGN16;
+
+struct Transformation
+{
+    Eigen::Vector3d translation;
+    Eigen::Quaterniond rotation;
+    Eigen::Matrix4d matrix;
+    int idx;
+    double time;
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+} EIGEN_ALIGN16;
+
+
+struct IMUwrench
+{
+    Eigen::Vector3d acc;
+    Eigen::Vector3d ang;
+    double time;
+};
+
+struct INSstate
+{
+    Eigen::Vector3d acc;
+    Eigen::Vector3d vel;
+    Eigen::Vector3d pos;
+    Eigen::Vector3d ang;
+    Eigen::Quaterniond ori;
+    Eigen::Vector3d jerk;
+    Eigen::Vector3d alpha;
+    double time;
+    double dt;
+    IMUwrench bias;
+};
+
+using namespace std;
+
+using std::placeholders::_1;
+using std::placeholders::_2;
+
+double toSec(builtin_interfaces::msg::Time header_stamp)
+{
+    rclcpp::Time time = header_stamp;
+    double nanoseconds = time.nanoseconds();
+
+    return nanoseconds * 1e-9;
+}
 
 
 
