@@ -63,6 +63,9 @@ typedef std::chrono::duration<int,std::milli> milliseconds_type;
 // typedef pcl::PointXYZINormal PointType; // need to calculate and assign normals
 typedef pcl::PointXYZINormal PointType; // need to calculate and assign normals
 
+
+//////////////////////////////////////////////////////////////////////////////////////////
+
 class Backend : public rclcpp::Node
 {
     private:
@@ -78,6 +81,7 @@ class Backend : public rclcpp::Node
         rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr transformation_sub;
 
         rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr save_cloud_service;
+        rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr save_full_cloud_service;
 
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr globalcloud_pub;
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr long_term_pub;
@@ -115,6 +119,7 @@ class Backend : public rclcpp::Node
         Eigen::Matrix4d odometry_transformation; // direct transformation from LO registration ie. keyframe to next odometry pose
 
 
+        size_t index_published{};
 
 
         bool new_cloud_ready;
@@ -171,21 +176,22 @@ class Backend : public rclcpp::Node
             options2.callback_group = sub2_cb_group_;
 
 
-            full_cloud_sub = this->create_subscription<sensor_msgs::msg::PointCloud2>(cloud_topic_, 100, std::bind(&Backend::pointCloudHandler, this, _1), options1);
+            full_cloud_sub = this->create_subscription<sensor_msgs::msg::PointCloud2>(cloud_topic_, 20, std::bind(&Backend::pointCloudHandler, this, _1), options1);
             // full_cloud_sub = this->create_subscription<sensor_msgs::msg::PointCloud2>("/preprocessed_point_cloud", 100, std::bind(&Backend::pointCloudHandler, this, _1), options1);
-            odom_sub = this->create_subscription<nav_msgs::msg::Odometry>(odometry_topic_, 100, std::bind(&Backend::odometryHandler, this, _1), options2);
+            odom_sub = this->create_subscription<nav_msgs::msg::Odometry>(odometry_topic_, 20, std::bind(&Backend::odometryHandler, this, _1), options2);
             // path_sub = this->create_subscription<nav_msgs::msg::Path>("/path", 100, std::bind(&Backend::pathHandler, this, _1));
 
             // transformation_sub = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>("/transformation/lidar", 100, std::bind(&Backend::transformationHandler, this, _1));
             // transformation_sub = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>("/transformation/kalman", 100, std::bind(&Backend::transformationHandler, this, _1));
 
-            globalcloud_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("/global_point_cloud", 100);
-            long_term_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("/long_term_map", 100);
+            globalcloud_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("/global_point_cloud", 1);
+            long_term_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("/long_term_map", 2);
             // localcloud_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("/local_point_cloud", 100);
-            odometry_pub = this->create_publisher<nav_msgs::msg::Odometry>("/odom_backend", 100);
-            path_pub = this->create_publisher<nav_msgs::msg::Path>("/path_backend", 100);
+            odometry_pub = this->create_publisher<nav_msgs::msg::Odometry>("/odom_backend", 2);
+            path_pub = this->create_publisher<nav_msgs::msg::Path>("/path_backend", 2);
 
             save_cloud_service = this->create_service<std_srvs::srv::Trigger>("save_cloud_data", std::bind(&Backend::saveCloudService,this, std::placeholders::_1, std::placeholders::_2));
+            save_full_cloud_service = this->create_service<std_srvs::srv::Trigger>("save_full_cloud_data", std::bind(&Backend::saveFullCloudService,this, std::placeholders::_1, std::placeholders::_2));
 
 
             initializeParameters();
@@ -401,18 +407,33 @@ class Backend : public rclcpp::Node
         {
             RCLCPP_INFO(get_logger(), "Request to save data received %s.", request);
 
-            saveGlobalCloudPCDServiceCall();
+            saveGlobalCloudPCDServiceCall(false, response);
 
             response->success = true;
-            response->message = "End of service" ;
+            // response->message = "End of service" ;
+
+            RCLCPP_INFO(get_logger(), "Data has been saved: %s ", response->success? "true":"false");
+        
+        }
+
+        void saveFullCloudService(const std::shared_ptr<std_srvs::srv::Trigger::Request> request, std::shared_ptr<std_srvs::srv::Trigger::Response>  response)
+        {
+            RCLCPP_INFO(get_logger(), "Request to save data received %s.", request);
+
+            
+            saveGlobalCloudPCDServiceCall(true, response);
+
+            response->success = true;
+            // response->message = "End of service" ;
 
             RCLCPP_INFO(get_logger(), "Data has been saved: %s ", response->success? "true":"false");
         
         }
 
 
-        void saveGlobalCloudPCDServiceCall()
+        void saveGlobalCloudPCDServiceCall(bool full, std::shared_ptr<std_srvs::srv::Trigger::Response>  response)
         {
+            std::string msg;
             RCLCPP_INFO(get_logger(), "Saving global cloud on service call!");
             RCLCPP_INFO(get_logger(), "Leaf size for downsampling is %f", global_map_ds_leafsize_);
 
@@ -426,42 +447,59 @@ class Backend : public rclcpp::Node
             std::string full_save_path = save_path_ + "/" + "loam_global_map_" + datestr;
             create_directories(full_save_path);
 
+            bool save_as_bin = true;
 
             rebuildGlobalMap();
-            pcl::io::savePCDFile(full_save_path + "/loam_map.pcd", *global_cloud);
-            pcl::io::savePCDFile(full_save_path + "/loam_map_ds.pcd", *global_cloud_ds);
+            if (full){
+                msg = "Full global map is saved in folder "+ full_save_path;
+                pcl::io::savePCDFile(full_save_path + "/loam_map.pcd", *global_cloud, save_as_bin);
+                RCLCPP_INFO(get_logger(), msg);
+            } else {
+                msg = "Downsampled global map is saved in folder "+ full_save_path;
+                pcl::io::savePCDFile(full_save_path + "/loam_map_ds.pcd", *global_cloud_ds, save_as_bin);
+                RCLCPP_INFO(get_logger(), msg);
+            }
+            response->message = msg;
             // pcl::io::savePCDFileASCII(full_save_path + "/loam_map_ds.pcd", *global_cloud_ds);
-
-            RCLCPP_INFO(get_logger(), "Global map is saved in folder %s", full_save_path.c_str());
 
             // global_cloud->clear();
         }
    
         void rebuildGlobalMap()
         {   
-            global_cloud->clear();
+            if (all_clouds.empty()){
+                return;
+            }
+            
+            // global_cloud->clear();
             // pcl::PointCloud<PointType> transformed_cloud;
             pcl::PointCloud<PointType>::Ptr transformed_cloud = boost::make_shared<pcl::PointCloud<PointType>>();
             // for (unsigned i = 0; i < odometry_pose_info->points.size(); i++)
-            for (unsigned i = 0; i < all_clouds.size(); i++)
-                {
-                    // Eigen::Quaterniond q_po(odometry_pose_info->points[i].qw,
-                    //                         odometry_pose_info->points[i].qx,
-                    //                         odometry_pose_info->points[i].qy,
-                    //                         odometry_pose_info->points[i].qz);
+            // #pragma omp for
+            for (size_t i = index_published ; i < all_clouds.size(); i++)
+            {
+                // Eigen::Quaterniond q_po(odometry_pose_info->points[i].qw,
+                //                         odometry_pose_info->points[i].qx,
+                //                         odometry_pose_info->points[i].qy,
+                //                         odometry_pose_info->points[i].qz);
 
-                    // Eigen::Vector3d t_po(odometry_pose_info->points[i].x,
-                    //                     odometry_pose_info->points[i].y,
-                    //                     odometry_pose_info->points[i].z);
+                // Eigen::Vector3d t_po(odometry_pose_info->points[i].x,
+                //                     odometry_pose_info->points[i].y,
+                //                     odometry_pose_info->points[i].z);
 
 
-                    // pcl::transformPointCloudWithNormals<PointType>(*all_clouds[i], transformed_cloud, t_po, q_po);
-                    *transformed_cloud = *all_clouds[i];
-                    *global_cloud += *transformed_cloud;
-                }
+                // pcl::transformPointCloudWithNormals<PointType>(*all_clouds[i], transformed_cloud, t_po, q_po);
+                *transformed_cloud = *all_clouds[i];
+                *global_cloud += *transformed_cloud;
+                index_published = i+1;
+            }
+                
+            pcl::PointCloud<PointType>::Ptr global_cloud_copy = boost::make_shared<pcl::PointCloud<PointType>>(*global_cloud);
 
-                global_map_ds_filter.setInputCloud(global_cloud);
-                global_map_ds_filter.filter(*global_cloud_ds);
+            pcl::copyPointCloud(*global_cloud, *global_cloud_copy);
+
+            global_map_ds_filter.setInputCloud(global_cloud_copy);
+            global_map_ds_filter.filter(*global_cloud_ds);
 
         }
 
@@ -492,12 +530,13 @@ class Backend : public rclcpp::Node
             // build global cloud from odometry transforms and recordeded (keyframe) clouds
             // publish the cloud, maybe with a gate-timer to not hog bandwidth and memory
   
-            // RCLCPP_INFO(get_logger(),"Publishing global map!");
             // RCLCPP_INFO(get_logger(),"number of clouds: %i", all_clouds.size());
             // RCLCPP_INFO(get_logger(),"number of poses: %i", odometry_pose_info->points.size());
             if (new_cloud_ready || new_pose_ready) { // if new poses are ready rebuilt map, else just publish current map
+                // RCLCPP_INFO(get_logger(),"Rebuilding global map!");
                 rebuildGlobalMap();
             }
+            // RCLCPP_INFO(get_logger(),"Publishing global map!");
 
             sensor_msgs::msg::PointCloud2 msgs;
             #ifndef __INTELLISENSE__ 
@@ -509,7 +548,7 @@ class Backend : public rclcpp::Node
             globalcloud_pub->publish(msgs);
 
             // clear the the full unsampled cloud out of RAM.
-            global_cloud->clear();
+            // global_cloud->clear();
             // global_map_ds->clear();
         }
 

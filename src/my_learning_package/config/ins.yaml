@@ -1,15 +1,15 @@
 ins:
   ros__parameters:
-    imu_dt: 0.01
-    imu_topic: "/imu/data"
+    imu_dt: 0.0
+    imu_topic: "/imu/data_madgwick"
     turn_on_bias_estimation_period: 0
     use_madgwick_orientation: false
     gravity_estimation_period: 10
     g_acc: 9.83
-    use_ficticiuos_force_correction: false # because of the offset from the ugv turning point/ CoM
+    use_ficticiuos_force_correction: false # because of the offset from the ugv turning point/ CoM <- TODO remove this nonsense
     use_kalman_bias_correction: false
     predict_next_scan: false
     run_independent: true
-    orientation_only: false
+    orientation_only: true
     
     

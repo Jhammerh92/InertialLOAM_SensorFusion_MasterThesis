@@ -67,6 +67,7 @@ class INS : public rclcpp::Node
         // NOTE: make filter or mechanization do the gravity estimate !!!
 
         double imu_dt_; 
+        double imu_dt{}; 
         double scan_dt{};
         double scan_timestamp{};
         double process_time{};
@@ -381,15 +382,34 @@ class INS : public rclcpp::Node
             }
         }
 
+        void calculateDT()
+        {
+            if (imu_dt_ == 0.0){
+                double this_time = toSec(delayed_imu_data->header.stamp);
+                double next_time = toSec(imu_buffer.front()->header.stamp);
+                imu_dt = next_time - this_time;
+                // RCLCPP_INFO_THROTTLE(get_logger(),rclcpp::Clock(), chrono::microseconds(2000), "IMU dt: %d", imu_dt);
+                if (imu_dt > 0.1){
+                    RCLCPP_WARN(get_logger(), "WARNING! IMU dt of above 0.1 sec detected: %f", imu_dt);
+                }
+            }
+        }
+
+        void getNextInBuffer()
+        {
+            delayed_imu_data = imu_buffer.front();
+            imu_buffer.pop_front();
+            calculateDT();
+        }
+
         void processINS(double cutoff_time)
         {
             getCurrentBias(process_time);
             // predict_buffer.clear();
 
-            while (process_time <= cutoff_time && !imu_buffer.empty()){
+            while (process_time <= cutoff_time && (2 < imu_buffer.size())){
 
-                delayed_imu_data = imu_buffer.front();
-                imu_buffer.pop_front();
+                getNextInBuffer();
 
                 // RCLCPP_INFO_ONCE(get_logger(), "INS First imu msg recieved..");
                 step++;
@@ -576,7 +596,7 @@ class INS : public rclcpp::Node
             orientation_post = orientation;
             // angular_acceleration = (previous_angular_velocity - angular_velocity) / imu_dt_;
             Eigen::Vector3d average_angular_velocity = 0.5 * (previous_angular_velocity  + angular_velocity) - current_bias.ang;
-            orientation_dt = deltaQ(average_angular_velocity * imu_dt_);
+            orientation_dt = deltaQ(average_angular_velocity * imu_dt);
             orientation *= orientation_dt;
             orientation.normalize();
             previous_angular_velocity = angular_velocity; 
@@ -585,7 +605,7 @@ class INS : public rclcpp::Node
             Eigen::Vector3d omega_old(omega);
             Eigen::AngleAxisd axangomega(orientation_dt);
             omega = axangomega.axis();
-            omega *= axangomega.angle() / imu_dt_;
+            omega *= axangomega.angle() / imu_dt;
             alpha = (omega - omega_old);
 
         }
@@ -641,12 +661,12 @@ class INS : public rclcpp::Node
 
         void updateVelocity()
         {   
-            velocity = velocity + acceleration * imu_dt_;
+            velocity = velocity + acceleration * imu_dt;
         }
 
         void updatePosition()
         {   
-            position = position + velocity * imu_dt_ - acceleration * imu_dt_*imu_dt_ *0.5;
+            position = position + velocity * imu_dt - acceleration * imu_dt*imu_dt *0.5;
         }
         
         void publishINS()
@@ -766,7 +786,7 @@ class INS : public rclcpp::Node
             g_vec_buffer.push_back(static_acc);
 
             // when enough time has passed trigger the calibration
-            if (time_stamp > (calibration_time + imu_dt_ * gravity_estimation_period_)){
+            if (time_stamp > (calibration_time + imu_dt * gravity_estimation_period_)){
                 double dt = time_stamp - calibration_time;
                 Eigen::Vector3d average_g_vec = Eigen::Vector3d::Zero();
                 size_t n = g_vec_buffer.size();

@@ -17,7 +17,9 @@ def generate_launch_description():
         package="my_learning_package",
         name="lidar_odometry",
         executable="lidar_odometry",
+        prefix=['stdbuf -o L'],
         parameters=[os.path.join(config_dir, 'lidar_odometry.yaml')],
+        output='screen',
         # arguments=['-d', os.path.join(get_package_share_directory('my_learning_package'), 'rviz', 'LO.rviz')]
     )
 

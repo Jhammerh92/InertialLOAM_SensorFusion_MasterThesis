@@ -146,7 +146,7 @@ public:
 
     // function that can remove points that are too close to the scanner i.e. auto-scans, weird function name will have to change it when I now how far i goes
     template <typename PointT>
-    void removeClosedPointCloud(const pcl::PointCloud<PointT> &cloud_in, pcl::PointCloud<PointT> &cloud_out, float thres) {
+    void filterProximateAndHighIntensePoints(const pcl::PointCloud<PointT> &cloud_in, pcl::PointCloud<PointT> &cloud_out, float thres) {
 
         // if the cloud are not the same, make sure head and size are the same
         if (&cloud_in != &cloud_out) {
@@ -494,7 +494,7 @@ public:
         // std::vector<int> indices;
         // pcl::removeNaNFromPointCloud(*lidar_cloud_in, *lidar_cloud_in, indices);
 
-        removeClosedPointCloud(*lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals, 2.0); // removes invalid points within a distance of x m from the center of the lidar
+        filterProximateAndHighIntensePoints(*lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals, 2.0); // removes invalid points within a distance of x m from the center of the lidar
         // removeStatisticalOutliers(lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals);
         pcl::copyPointCloud(*lidar_cloud_in_no_normals, *lidar_cloud_in);
         downSampleCloud(lidar_cloud_in, *lidar_cloud_in);

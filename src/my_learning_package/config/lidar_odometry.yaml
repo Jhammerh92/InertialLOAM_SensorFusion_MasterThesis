@@ -1,49 +1,54 @@
 lidar_odometry:
   ros__parameters:
-    # downsampling parameters
-    ds_voxel_size: 0.05 # <0.05 current cloud downsample size
-    ds_voxel_size_lc: 0.03 # 0.01 - local map down sample size
+    # voxel downsampling parameters
+    ds_voxel_size: 0.5 # <0.05 current cloud downsample size
+    ds_voxel_size_lc: 0.5 # 0.01 - local map down sample size
     ds_voxel_size_kf: 0.5 # 0.01 - keyframe map down sample size
+    
+    # active cloud scaling voxel downsampling
     use_cloud_scale_for_ds: false # if this is false above are used, if true below are used
-    cloud_scale_previuos_cloud_weight: 0.9 # 0-1
-    ds_lc_voxel_size_ratio: 2.0 # the bigger, the finer the local map is
-    points_per_cloud_scale: 25 # desired points in the width of the cloud 
+    cloud_scale_previuos_cloud_weight: 0.9 # 0-1, to make cloud scaling more smooth in transitions
+    ds_lc_voxel_size_ratio: 1.5 # the bigger, the finer the local map is
+    points_per_cloud_scale: 50 # desired points in the width of the cloud 
+    
     # Keyframe thresholds
-    keyframe_threshold_length: 0.2 # meters, 2.0 is good, 0.02 for dense maps!
-    keyframe_threshold_angle: 5.0 # deg, 30 is good
+    keyframe_threshold_length: 5.0 # meters, 2.0 is good, 0.02 for dense maps!
+    keyframe_threshold_angle: 45.0 # deg, 30 is good
     keyframe_threshold_fitness: 0.0
     keyframe_threshold_index: 0 # 0 means it is not used, 1 means keyframe all frames
+    
     # scan matching parameters
-    scan_matching_method: 1 # 0 ICP-p2pl, 1 GICP-OMP, 2 GICP, 3 NDT-p2d
-    icp_max_iterations: 25 # 10-30
+    scan_matching_method: 0 # 0 ICP-p2pl, 1 GICP OMP, 2 GICP, 3 NDT-p2d OMP
+    icp_max_iterations: 1000 # 10-30
     icp_max_coarse_iterations: 0 # < 5
-    icp_max_correspondence_distance: 0.1 # should be less than voxelsize of source OBS this works as NDT resultion when using NDT
+    icp_max_correspondence_distance: 1.0 # should be less than voxelsize of source OBS this works as NDT resultion when using NDT
     coarse_correspondence_factor: 10
-    local_map_width: 50 # if 0 all previous keyframes are pushed to local map indefinitely
-    local_map_init_frames_count: 50
+    local_map_width: 5 # if 0 all previous keyframes are pushed to local map indefinitely
+    local_map_init_frames_count: 25
 
     # imu fusion parameters
-    imu_topic: "/imu/data"
+    imu_topic: "/imu/data_madgwick"
     use_ins_guess: false
     use_preint_imu_guess: false
     use_lidar_odometry_guess: false
     use_preint_undistortion: true # PREINTEGRATION
 
-
+    start_delay_s: 0.2 # this discards all data until this time is reached from the first lidar msg
     sync_offset_ms: 0.0 # this ms value is added to the lidar frame time stamp in millisec
 
 
-    # translation covariance
+    # translation covariance minimums (values are standard deviations)
     translation_std_min_x: 0.001
     translation_std_min_y: 0.001
     translation_std_min_z: 0.001
 
-    # simple geometric observer gains -> lower value means more independent INS
-    gamma_1: 1.2   # orientation gain       # 2.0
-    gamma_2: 0.5   # angular vel bias gain  # 1.5
-    gamma_3: 1.0   # positional gain        # 1.0
-    gamma_4: 10.0   # velocity gain         # 20.0
-    gamma_5: 0.3   # acc bias gain          # 0.5
+    # simple geometric observer gains -> lower value means more 'independent'/ less corrected INS
+    #                 description             suggested value
+    gamma_1: 2.0    # orientation gain       # 2.0 
+    gamma_2: 1.5    # angular vel bias gain  # 1.5
+    gamma_3: 1.0    # positional gain        # 1.0
+    gamma_4: 20.0   # velocity gain          # 20.0
+    gamma_5: 0.1    # acc bias gain          # 0.5
 
     start_idx: 0
     end_idx: 0

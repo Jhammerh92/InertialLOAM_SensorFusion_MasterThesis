@@ -1,7 +1,7 @@
 #define BOOST_BIND_NO_PLACEHOLDERS
 
 #include "rclcpp/rclcpp.hpp"
-// #include "utils/common.h"
+#include "my_learning_package/utils/common.hpp"
 // #include "common.h"
 
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -34,11 +34,12 @@
 #include <queue>
 // #include <assert.h>
 
-typedef pcl::PointXYZI PointTypeNoNormals; // need to calculate and assign normals and the change to PointXYZINormals
-typedef pcl::PointXYZINormal PointType;
+// typedef pcl::PointXYZI PointTypeNoNormals; // need to calculate and assign normals and the change to PointXYZINormals
+// typedef pcl::PointXYZINormal PointType;
+// // typedef pcl::PointXYZR PointTypewTime;
 
-using namespace std;
-using std::placeholders::_1;
+// using namespace std;
+// using std::placeholders::_1;
 
 
 
@@ -51,7 +52,7 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_Lidar_cloud;
     rclcpp::TimerBase::SharedPtr process_timer;
 
-    rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu;
+    // rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu;
 
 
     pcl::VoxelGrid<PointType> down_size_filter;
@@ -68,8 +69,13 @@ private:
     // int pre_num = 0;
 
     pcl::PointCloud<PointType>::Ptr lidar_cloud_in = boost::make_shared<pcl::PointCloud<PointType>>();
+    // pcl::PointCloud<PointTypeWTime>::Ptr lidar_cloud_in = boost::make_shared<pcl::PointCloud<PointTypeWTime>>();
     pcl::PointCloud<PointTypeNoNormals>::Ptr lidar_cloud_in_no_normals = boost::make_shared<pcl::PointCloud<PointTypeNoNormals>>();
+    // pcl::PointCloud<PointTypeWTime>::Ptr lidar_cloud_in_with_time = boost::make_shared<pcl::PointCloud<PointTypeWTime>>();
     pcl::PointCloud<PointType>::Ptr lidar_cloud_cutted = boost::make_shared<pcl::PointCloud<PointType>>();
+    
+    // pcl::StatisticalOutlierRemoval<PointT> sor;
+    
     std_msgs::msg::Header cloud_header;
 
     vector<sensor_msgs::msg::Imu::SharedPtr> imu_buffer;
@@ -114,6 +120,7 @@ private:
     int pc_normal_knn_points_;
 
     double filter_close_points_distance_m_;
+    double filter_max_intensity_;
     bool use_gyroscopic_undistortion_{};
     double pre_downsample_leaf_size_;
 
@@ -129,6 +136,9 @@ public:
     {
         declare_parameter("filter_close_points_distance_m", 0.5);
         get_parameter("filter_close_points_distance_m", filter_close_points_distance_m_);
+
+        declare_parameter("filter_max_intensity", 200.0);
+        get_parameter("filter_max_intensity", filter_max_intensity_);
 
         declare_parameter("use_gyroscopic_undistortion", false);
         get_parameter("use_gyroscopic_undistortion", use_gyroscopic_undistortion_);
@@ -205,7 +215,7 @@ public:
         options.callback_group = subscriber_cb_group_;                                                                                                               // add callbackgroup to subscriber options
         string lidar_topic = lidar_source_topic_ + "/lidar";
         sub_Lidar_cloud = this->create_subscription<sensor_msgs::msg::PointCloud2>(lidar_topic, 100, std::bind(&Preprocessing::cloudHandler, this, _1), options); // add subscriber options to the subsriber constructor call..
-        sub_imu = this->create_subscription<sensor_msgs::msg::Imu>("/imu/data_raw", 100, std::bind(&Preprocessing::imuHandler, this, _1), options);                  // make separate subscribe callback group?
+        // sub_imu = this->create_subscription<sensor_msgs::msg::Imu>("/imu/data_raw", 100, std::bind(&Preprocessing::imuHandler, this, _1), options);                  // make separate subscribe callback group?
 
         timer_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
         process_timer = this->create_wall_timer(1ms, std::bind(&Preprocessing::processNext, this), timer_cb_group_);
@@ -245,7 +255,6 @@ public:
         // RCLCPP_INFO(get_logger(), "Timestamp of IMU from toSec: %f", toSec(imu_in->header.stamp));
 
 
-
         if (imu_buffer.size() > imu_buffer_max_size)                           // if buffer is "filled" / above max size, clear the entries at the front
             imu_buffer[imu_buffer.size() - imu_buffer_max_size + 1] = nullptr; // why not pop the first element in buffer, if this is to clear old buffer?
 
@@ -269,7 +278,7 @@ public:
 
     // function that can remove points that are too close to the scanner i.e. auto-scans, weird function name will have to change it when I now how far i goes
     template <typename PointT>
-    void removeClosedPointCloud(const pcl::PointCloud<PointT> &cloud_in, pcl::PointCloud<PointT> &cloud_out, float thres)
+    void filterProximateAndHighIntensePoints(const pcl::PointCloud<PointT> &cloud_in, pcl::PointCloud<PointT> &cloud_out, float distance_threshold, float intensity_threshold)
     {
 
         // if the cloud are not the same, make sure head and size are the same
@@ -279,19 +288,22 @@ public:
             cloud_out.points.resize(cloud_in.points.size());
         }
 
+        float squared_dist_threshold = distance_threshold * distance_threshold;
         size_t j = 0;
-
         for (size_t i = 0; i < cloud_in.points.size(); ++i)
         {
             if (cloud_in.points[i].x * cloud_in.points[i].x +
-                    cloud_in.points[i].y * cloud_in.points[i].y +
-                    cloud_in.points[i].z * cloud_in.points[i].z <
-                thres * thres) // calculating the squared distance of a point and comparing it to a threshold
+                cloud_in.points[i].y * cloud_in.points[i].y +
+                cloud_in.points[i].z * cloud_in.points[i].z 
+                < squared_dist_threshold  
+                || cloud_in.points[i].intensity > intensity_threshold
+                || (!pcl::isFinite(cloud_in.points[i]) || !pcl::isFinite(cloud_in.points[i]))) // calculating the squared distance of a point and comparing it to a threshold
                 continue;
-            if (!pcl::isFinite(cloud_in.points[i]) || !pcl::isFinite(cloud_in.points[i]))
-            {
-                continue;
-            }
+            
+            // if (!pcl::isFinite(cloud_in.points[i]) || !pcl::isFinite(cloud_in.points[i]))
+            // {
+            //     continue;
+            // }
             cloud_out.points[j] = cloud_in.points[i]; // if they are beyond the threshold assign the point to cloud out
             j++;                                      // count exchanged points
         }
@@ -430,7 +442,7 @@ public:
     }
 
     template <typename PointT>
-    void calculatePointCurvature(const pcl::PointCloud<PointT> &cloud_in, pcl::PointCloud<PointType> &cloud_out)
+    void calculatePointCurvature(const pcl::PointCloud<PointT> &cloud_in, pcl::PointCloud<PointT> &cloud_out)
     {
         size_t m = calculate_point_curvature_kernel_width_; // the "width" around a point, so the section size becomes 2m + 1
         size_t n = 2 * m + 1;
@@ -468,7 +480,7 @@ public:
     }
 
     template <typename PointT>
-    void calculatePointPlateau(const pcl::PointCloud<PointT> &cloud_in, pcl::PointCloud<PointType> &cloud_out)
+    void calculatePointPlateau(const pcl::PointCloud<PointT> &cloud_in, pcl::PointCloud<PointT> &cloud_out)
     {
         size_t m = calculate_point_plateau_kernel_width_; // the "width" around a point, so the section size becomes 2m + 1
         size_t n = 2 * m + 1;
@@ -525,27 +537,29 @@ public:
     }
 
     template <typename PointT>
-    void calculatePointNormals(const boost::shared_ptr<pcl::PointCloud<PointT>> &cloud_in, pcl::PointCloud<PointType> &cloud_out)
+    void calculatePointNormals(const boost::shared_ptr<pcl::PointCloud<PointT>> &cloud_in, pcl::PointCloud<PointT> &cloud_out)
     {
         // Create the normal estimation class, and pass the input dataset to it
-        pcl::NormalEstimationOMP<PointType, PointType> normal_estimator;
+        // pcl::NormalEstimationOMP<PointType, PointType> normal_estimator;
+        // pcl::NormalEstimationOMP<PointTypeWTime, PointTypeWTime> normal_estimator;
+        pcl::NormalEstimationOMP<PointT, PointT> normal_estimator;
         normal_estimator.useSensorOriginAsViewPoint();
         normal_estimator.setInputCloud(cloud_in);
 
         // Create an empty kdtree representation, and pass it to the normal estimation object.
         // Its content will be filled inside the object, based on the given input dataset (as no other search surface is given).
         pcl::search::KdTree<PointType>::Ptr tree(new pcl::search::KdTree<PointType>()); // boost shared ptr?
+        // pcl::search::KdTree<PointTypeWTime>::Ptr tree(new pcl::search::KdTree<PointTypeWTime>()); // boost shared ptr?
+        // pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>()); // boost shared ptr?
         normal_estimator.setSearchMethod(tree);
 
         // // Output datasets
         // pcl::PointCloud<pcl::Normal>::Ptr cloud_normals (new pcl::PointCloud<pcl::Normal>);
 
-        if (pc_normal_search_radius_ > 0.0)
-        {
+        if (pc_normal_search_radius_ > 0.0){
             normal_estimator.setRadiusSearch(pc_normal_search_radius_); // Use all neighbors in a sphere of radius x meters
         }
-        else
-        {
+        else{
             normal_estimator.setKSearch(pc_normal_knn_points_); // use x nearest points, more robust to cloud scale variation
         }
 
@@ -635,10 +649,9 @@ public:
     }
     
 
-    // template <typename PointT>
-    void assignEdgeAndSurface(boost::shared_ptr<pcl::PointCloud<PointType>> &edges, boost::shared_ptr<pcl::PointCloud<PointType>> &surfs)
+    template <typename PointT>
+    void assignEdgeAndSurface(boost::shared_ptr<pcl::PointCloud<PointT>> &edges, boost::shared_ptr<pcl::PointCloud<PointT>> &surfs)
     {
-
         size_t cloud_size = lidar_cloud_in->points.size();
         // this is in meters when using plateau
         //  double edge_threshold_ = 0.5; // edge treshold, in meters when using plateau
@@ -648,7 +661,6 @@ public:
         for (size_t i = 0; i < cloud_size; i++)
         {
             point = lidar_cloud_in->points[i];
-
 
             if (point.curvature > surfaces_threshold_ && point.curvature < edge_threshold_)
             {
@@ -668,7 +680,7 @@ public:
     }
 
     template <typename PointT>
-    void normalizeIntensities(const pcl::PointCloud<PointT> &cloud_in, pcl::PointCloud<PointType> &cloud_out)
+    void normalizeIntensities(const pcl::PointCloud<PointT> &cloud_in, pcl::PointCloud<PointT> &cloud_out)
     {
         double range_reference = normalize_intensities_reference_range_; // could be actively determined from cloudscale..
         double intensity_normalized = 0.0;
@@ -679,17 +691,21 @@ public:
         {
             double range = getDepth(cloud_in.points[i]);
             normal_vector = getSurfaceNormal(cloud_in.points[i]);
-            range_vector = -getNormalizedPositionVector(cloud_in.points[i]);
-            double cos_incidence_angle = abs(range_vector.transpose() * normal_vector);
-
+            range_vector = - getNormalizedPositionVector(cloud_in.points[i]);
+            // double cos_incidence_angle = abs(range_vector.transpose() * normal_vector);
+            double cos_incidence_angle = range_vector.dot(normal_vector);
             double intensity = (double)cloud_in.points[i].intensity;
-            intensity_normalized = intensity * (range / range_reference) * (range / range_reference) * (1.0 / cos_incidence_angle);
+            // intensity_normalized = intensity * (range / range_reference) * (range / range_reference) * (1.0 / cos_incidence_angle);
+            // intensity_normalized = intensity * pow((range / range_reference), 2.3) * (1.0 / cos_incidence_angle);
+            // intensity_normalized = intensity * pow((range / range_reference), 0.5) * pow(cos_incidence_angle, -0.3);
+            intensity_normalized = intensity * pow(cos_incidence_angle, -0.3);
+            
             // intensity_normalized = intensity * (range / range_reference) * (1.0 / cos_incidence_angle);
             // intensity_normalized = intensity * (1.0 / cos_incidence_angle);
 
-            if (intensity_normalized > 255.0)
+            if (intensity_normalized > filter_max_intensity_)
             {
-                intensity_normalized = 255.0;
+                intensity_normalized = filter_max_intensity_;
             }
 
             // if (intensity_normalized > max_intesity) {
@@ -846,23 +862,13 @@ public:
 
         #ifndef __INTELLISENSE__ // to ignore error from missing overload of function, should still work on the new sensor_msg::msg::PointCloud2
         pcl::fromROSMsg(current_cloud_msg, *lidar_cloud_in_no_normals);
+        // pcl::fromROSMsg(current_cloud_msg, *lidar_cloud_in_with_time);
         #endif
 
-        // imbed the scan time of the individual point to the intesity value which is then the integer part, and the time is the fractional part
-        // if ( lidar_source_topic_.compare("/velodyne") ==0) {
-        //     // embedPointTimeVelodyne(lidar_cloud_in_no_normals, lidar_cloud_in_no_normals, time_scan_next - time_scan);
-        //     embedPointTime(lidar_cloud_in_no_normals, lidar_cloud_in_no_normals, time_scan_next - time_scan);
-        // } else {
 
 
-        if ( lidar_source_topic_.compare("/velodyne") == 0 || pre_downsample_leaf_size_ > 0.0) { // downsample if cloud is from velodyne
-            down_size_filter.setInputCloud(lidar_cloud_in);
-            down_size_filter.filter(*lidar_cloud_in);
-        }
 
-        double scan_dt = time_scan_next - time_scan;
-        scan_dt = validateScanTime(scan_dt); // safeguard againt hitches/pauses in the recording
-        embedPointTime(lidar_cloud_in_no_normals, lidar_cloud_in_no_normals, scan_dt);
+        
 
 
 
@@ -898,31 +904,36 @@ public:
         }
 
         // ESSENTIAL PREPROCESSING
-        removeClosedPointCloud(*lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals, filter_close_points_distance_m_); // removes invalid points within a distance of x m from the center of the lidar
+        filterProximateAndHighIntensePoints(*lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals, filter_close_points_distance_m_, filter_max_intensity_); // removes invalid points within a distance of x m from the center of the lidar
         // removeTransitionOutliers(*lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals);
         removeStatisticalOutliers(lidar_cloud_in_no_normals, *lidar_cloud_in_no_normals);
         pcl::copyPointCloud(*lidar_cloud_in_no_normals, *lidar_cloud_in); // change pointtype to point cloud with normal data
+
+        // filterProximateAndHighIntensePoints(*lidar_cloud_in_with_time, *lidar_cloud_in_with_time, filter_close_points_distance_m_, 200.0); // removes invalid points within a distance of x m from the center of the lidar
+        // removeStatisticalOutliers(lidar_cloud_in_with_time, *lidar_cloud_in_with_time);
+        // pcl::copyPointCloud(*lidar_cloud_in_with_time, *lidar_cloud_in); // change pointtype to point cloud with normal data
 
         if (pc_normal_knn_points_ > 0 || pc_normal_search_radius_ > 0.0){
             calculatePointNormals(lidar_cloud_in, *lidar_cloud_in); // openMP multi-processing accelerated
         }
 
-        // NON-ESSENTIAL PREPROCESSING. The if statements are slow and therefore uncommented. This needs a complex solution to determine bools at compile time 
-        if (normalize_intensities_reference_range_ > 0.0)
-        {
+        // NON-ESSENTIAL PREPROCESSING.
+        
+        if (normalize_intensities_reference_range_ > 0.0){
             normalizeIntensities(*lidar_cloud_in, *lidar_cloud_in);
         }
-
-        if (calculate_point_curvature_kernel_width_ > 0)
-        {
+        if (calculate_point_curvature_kernel_width_ > 0){
             calculatePointCurvature(*lidar_cloud_in, *lidar_cloud_in); // this is done in normal calculation anyway, so never needed again
         }
-
-        if (calculate_point_plateau_kernel_width_ > 0)
-        {
+        if (calculate_point_plateau_kernel_width_ > 0){
             calculatePointPlateau(*lidar_cloud_in, *lidar_cloud_in); // disabled because i'm not yet using the edges
         }
 
+
+        double scan_dt = time_scan_next - time_scan;
+        scan_dt = validateScanTime(scan_dt); // safeguard againt hitches/pauses in the recording
+        // embedPointTime(lidar_cloud_in_with_time, lidar_cloud_in_with_time, scan_dt);
+        embedPointTime(lidar_cloud_in, lidar_cloud_in, scan_dt);
 
 
         // pcl::PointCloud<PointType>::Ptr surf_features = boost::make_shared<pcl::PointCloud<PointType>>(); // (new pcl::PointCloud<PointType>()); // boost shared ptr??
@@ -971,12 +982,17 @@ public:
 
 int main(int argc, char **argv)
 {
-    rclcpp::init(argc, argv);
-    auto processing_node = std::make_shared<Preprocessing>();
-    rclcpp::executors::MultiThreadedExecutor executor;
-    executor.add_node(processing_node);
+    // rclcpp::init(argc, argv);
+    // auto processing_node = std::make_shared<Preprocessing>();
+    // rclcpp::executors::MultiThreadedExecutor executor;
+    // executor.add_node(processing_node);
 
-    executor.spin();
+    // executor.spin();
+    // rclcpp::shutdown();
+    // return 0;
+
+    rclcpp::init(argc, argv);
+    rclcpp::spin(std::make_shared<Preprocessing>());
     rclcpp::shutdown();
     return 0;
 }

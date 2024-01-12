@@ -52,6 +52,9 @@ link_directories(
   ${PCL_LIBRARY_DIRS}
 )
 
+# add_library(ins_ SHARED src/ins.cpp)
+# ament_target_dependencies(ins_ ${dependencies})
+
 set(dependencies "std_msgs" "std_srvs" "rclcpp" "geometry_msgs" "sensor_msgs" "tf2" "tf2_geometry_msgs" "sensor_msgs" "pcl_conversions" "pcl_ros" "nav_msgs" "ndt_omp_ros2")
 
 # add_executable(hello_publisher src/hello_publisher.cpp)
@@ -74,6 +77,7 @@ set(dependencies "std_msgs" "std_srvs" "rclcpp" "geometry_msgs" "sensor_msgs" "t
 
 add_executable(lidar_odometry src/LidarOdometry.cpp)
 ament_target_dependencies(lidar_odometry ${dependencies})
+# target_link_libraries(lidar_odometry ins_)
 
 add_executable(preprocessing src/Preprocessing.cpp)
 ament_target_dependencies(preprocessing ${dependencies})
@@ -118,6 +122,10 @@ target_include_directories(my_test_node PUBLIC
 target_include_directories(ins PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
+
+# target_include_directories(lidar_odometry PUBLIC
+#   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+#   $<INSTALL_INTERFACE:include>)
 
 
 install(TARGETS 

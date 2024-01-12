@@ -251,7 +251,6 @@ class IMUConverter : public rclcpp::Node
         
         void publish()
         {
-            
             // data
             filtered_imu_data.linear_acceleration.x = acceleration[0];
             filtered_imu_data.linear_acceleration.y = acceleration[1];

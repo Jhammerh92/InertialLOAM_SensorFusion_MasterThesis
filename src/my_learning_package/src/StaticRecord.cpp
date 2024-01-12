@@ -180,7 +180,8 @@ class StaticRecorder : public rclcpp::Node // inheritance here  from ROS RCLCPP 
             // save the accumulated cloud as pcd
             // TODO get actual timestap since start and index number on name of cloud for traceability
             // timestamp is put on a parent folder, index and time since start shall be put on filename
-            pcl::io::savePCDFileASCII(full_save_path + filename, *collected_cloud);
+            bool save_as_binary = true;
+            pcl::io::savePCDFile(full_save_path + filename, *collected_cloud, save_as_binary);
             // clear created cloud
             collected_cloud->clear();
 

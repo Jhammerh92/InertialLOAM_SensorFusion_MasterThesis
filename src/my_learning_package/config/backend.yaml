@@ -1,9 +1,9 @@
 backend:
   ros__parameters:
-    global_map_ds_leafsize: 0.01
-    global_map_update_rate: 2.0
+    global_map_ds_leafsize: 0.1 # in meters
+    global_map_update_rate: 10.0 # in seconds
     odometry_topic: "/odom"
     cloud_topic: "/full_point_cloud_odom"
-    long_term_ds_leafsize: 0.4
+    long_term_ds_leafsize: 5.0
     save_pcd: false
     save_path: "loam_maps"
