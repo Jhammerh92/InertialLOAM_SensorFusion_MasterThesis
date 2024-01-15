@@ -80,9 +80,11 @@
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-class INS{
+class INS //: public rclcpp::Node
+{
 public:
     INS()
+    // : Node("ins")
     {  
         preint_state.ori = Eigen::Quaterniond::Identity();
         preint_state.pos = Eigen::Vector3d::Zero();
@@ -98,6 +100,7 @@ public:
 
         preint_transformation_guess.rotation = Eigen::Quaterniond::Identity();
         preint_transformation_guess.translation = Eigen::Vector3d::Zero();
+        preint_transformation_guess.matrix = Eigen::Matrix4d::Identity();
         preint_transformation_guess.time = 0.0;
     }
     ~INS(){}
@@ -268,6 +271,7 @@ void INS::initializeInitialPose(Eigen::Quaterniond orientation)
     preint_state.ori                     =  Eigen::Quaterniond(orientation);
     preint_anchor.ori                    =  Eigen::Quaterniond(orientation);
     preint_transformation_guess.rotation =  Eigen::Quaterniond(orientation);
+    preint_transformation_guess.matrix.block<3,3>(0,0) = Eigen::Matrix3d(orientation);
     cout << "FROM INS: Initial orientation :\n" << orientation.w() <<"\n"<< orientation.vec() << "\n";
 
 }
@@ -355,9 +359,10 @@ void INS::integrateImuStep(Eigen::Vector3d acc, Eigen::Vector3d ang_vel, double 
 
     // Integrate the orientation from the angular rate and save the average ori between this and the previous state
     preint_state.ang = ang_vel - current_bias.ang;
-    Eigen::Quaterniond dq_vel = deltaQ(0.5*(preint_state.ang + previous_state.ang)); 
- 
-    dq_vel = multQuatByScalar(dq_vel, dt);
+    // Eigen::Quaterniond dq_vel = deltaQ(0.5*(preint_state.ang + previous_state.ang)); // the 0.5 is to find the average
+    // dq_vel = multQuatByScalar(dq_vel, dt);
+    Eigen::Quaterniond dq_vel = deltaQ(0.5*(preint_state.ang + previous_state.ang)*dt); // the 0.5 is to find the average
+    // dq_vel = multQuatByScalar(dq_vel, dt);
 
     Eigen::Quaterniond dq = preint_state.ori*dq_vel; // 1/2 * q * dq * dt
     preint_state.ori = addQuaternions(dq, preint_state.ori); 
@@ -431,7 +436,7 @@ void INS::preintegrateIMU(const double last_scan_start_time, const double next_s
     // the total time delta that the preintegration should cover
     double integration_delta = next_scan_end_time - last_scan_start_time;
 
-    cout << "FROM INS: Integration time: " << integration_delta << " start: " << to_string(last_scan_start_time) << " end: " << to_string(next_scan_end_time) << "\n";
+    cout << "FROM INS: Integration delta: " << integration_delta << ", start: " << to_string(last_scan_start_time) << " end: " << to_string(next_scan_end_time) << "\n";
     double integration_time = 0.0;
     // clear out buffer up till the first imu msg before the scan begins, the anchor state should be just before the start of the scan
     double imu_msg_dt{};
@@ -447,7 +452,7 @@ void INS::preintegrateIMU(const double last_scan_start_time, const double next_s
     int j = 0;
     double msg_time = toSec(imu_msg_buffer[0]->header.stamp);
     double delay = last_scan_start_time - msg_time;
-    if (delay > mean_imu_dt){
+    if (delay > mean_imu_dt){ // if the time difference is bigger than the expected imu delta then add a msg at the start time of the frame
         // cout << "delay!: "<< delay << "\n";
         j++;
         Eigen::Vector3d acc_in(0.0,0.0,0.0);
@@ -462,20 +467,6 @@ void INS::preintegrateIMU(const double last_scan_start_time, const double next_s
     sensor_msgs::msg::Imu imu_msg;
     // while (true){
     while (msg_time <= next_scan_end_time){
-
-        
-        // if (toSec(imu_msg_buffer[j]->header.stamp) > next_scan_end_time + 2.0 * mean_imu_dt){
-        //     Eigen::Vector3d acc_in(0.0,0.0,0.0);
-        //     Eigen::Vector3d ang_vel_in(0.0,0.0,0.0);
-        //     // double fill_time = next_scan_end_time - msg_time + mean_imu_dt/2.0;
-        //     double fill_time = next_scan_end_time - msg_time + mean_imu_dt;
-        //     IMUwrench new_imu_wrench = createIMUwrench(acc_in, ang_vel_in, fill_time, msg_time + mean_imu_dt);    
-        //     preintegrate_buffer.push_back(new_imu_wrench);
-        //     j++;
-        //     cout << "FROM INS: new AND LAST !const vel! msg added " << j << " timestamp: " << to_string(msg_time + mean_imu_dt) << " msg dt: "<< fill_time << " dt: " << mean_imu_dt << "\n";
-        //     break;
-        // }
-
         imu_msg = *imu_msg_buffer[j];
         msg_time = toSec(imu_msg.header.stamp);
         imu_msg_dt = getIMUdt(j); 
@@ -496,42 +487,10 @@ void INS::preintegrateIMU(const double last_scan_start_time, const double next_s
         j++;
         // cout << "FROM INS: new msg added" << j << "\ttimestamp: " << to_string(msg_time) << "\tmsg dt:"<< imu_msg_dt << "\tdt: " << imu_dt << "\n";
         // cout << " acc: " << acc_in.transpose() << "\n ang:  " << ang_vel_in.transpose() << "\n"; 
-
-         
-        // double lag_time = msg_time + imu_dt;
-        // while (lag_discrepancy > 0.0) {
-        //     Eigen::Vector3d acc_in(0.0,0.0,0.0);
-        //     Eigen::Vector3d ang_vel_in(0.0,0.0,0.0);
-        //     IMUwrench new_imu_wrench = createIMUwrench(acc_in, ang_vel_in, imu_dt, lag_time);    
-        //     preintegrate_buffer.push_back(new_imu_wrench);
-        //     cout << "FROM INS: new !const vel! msg added " << j << " timestamp: " << to_string(lag_time) << " msg dt: "<< imu_msg_dt << " dt: " << imu_dt << "\n";
-        //     // cout << " acc: " << acc_in.transpose() << "\n ang:  " << ang_vel_in.transpose() << "\n"; 
-        //     j++;
-
-        //     lag_time += imu_dt;
-        //     lag_discrepancy -= imu_dt;
-        //     if (lag_time > next_scan_end_time){
-        //         break;
-        //     }
-        // }
-
-        // if (msg_time > next_scan_end_time){ 
-        //     break;
-        // }
     }
 
     cout << "FROM INS: preintegrate buffer length: " << preintegrate_buffer.size() << "\n";
     
-
-
-    // sensor_msgs::msg::Imu imu_msg;
-    // imu_msg = *imu_msg_buffer.front(); // the front in the buffer should be the first imu msg before the scan starts    
-    // msg_time = toSec(imu_msg.header.stamp); // the timestamp of the imu msg
-
-    // imu_msg_dt = getIMUdt(0); 
-    // imu_dt = validateIMUdt(imu_msg_dt); // checks the dt against an average
-    // lag_discrepancy = imu_msg_dt - imu_dt; // the delay up till when the next msg should have arrived
-
     // get the preintegration achor state, this is the state that the integration iterates from
     getPreintAnchor(preint_state);
     // overwrite timestamp of the anchor to the correct time of the next msg
@@ -543,13 +502,9 @@ void INS::preintegrateIMU(const double last_scan_start_time, const double next_s
     
     preint_states.push_back(this_preint_state); // push the anchor state
     
-
     // cout << "FROM INS: before integration preint state rotation:\n" << preint_state.ori.w() <<"\n"<< preint_state.ori.vec() << "\n";
-    // run buffer uptil the next lidar scan time, msg are not popped as they have to be used again
-    
-    for (size_t i = 0; i < preintegrate_buffer.size(); i++)
-    {
-
+    // integrate all the collected imu msg in the integration delta time
+    for (size_t i = 0; i < preintegrate_buffer.size(); i++) {
         IMUwrench imu_input = preintegrate_buffer[i];
         double msg_time = imu_input.time;
         // imu_dt = validateIMUdt(imu_input.dt);
@@ -580,11 +535,10 @@ void INS::preintegrateIMU(const double last_scan_start_time, const double next_s
         // cout << "acc: " << imu_input.acc.transpose() << " ang:  " << imu_input.ang.transpose() << "\n";
         // cout << "preintegrated:"<< i << "\t translation:" << translation.transpose() << " m,\tangle: " << preint_angle << " degrees \n";
 
-        if (msg_time > next_scan_end_time){ // we wish to add atleast one frame beyond to calc jerk etc. so when the first imu frame that is later is added we break/return, the 1.10 is to add 10% to account for variation in timestamps precision
-        // if (integration_time > integration_delta){ 
-            return;
-        }
-        
+        // if (msg_time > next_scan_end_time){ // not really need anymore
+        // // if (integration_time > integration_delta){ 
+        //     return;
+        // }
     }
 } 
 
@@ -661,6 +615,9 @@ void INS::calcLidarSyncedState(const double frame_start_time)
     // it is saved so it can be used in the observer
     preint_transformation_guess.translation = lidar_synced_state.pos;
     preint_transformation_guess.rotation = lidar_synced_state.ori;
+    preint_transformation_guess.matrix = Eigen::Matrix4d::Identity();
+    preint_transformation_guess.matrix.block<3,3>(0,0) = Eigen::Matrix3d(lidar_synced_state.ori);
+    preint_transformation_guess.matrix.block<3,1>(0,3) = Eigen::Vector3d(lidar_synced_state.pos);
 
 }
 
@@ -674,13 +631,24 @@ INSstate INS::calcKinematicInterpolatedState(INSstate this_state, INSstate next_
 
     INSstate interpolated_state;
 
-    interpolated_state.pos = this_state.pos + this_state.vel * sync_time + (preint_states[0].ori *preint_states[0].acc) * half_sync_time_sq  +  preint_states[0].jerk * sixth_sync_time_cb;
-    interpolated_state.vel = this_state.vel + (preint_states[0].ori.matrix() *preint_states[0].acc) *sync_time + preint_states[0].jerk * half_sync_time_sq;
-    interpolated_state.acc = this_state.acc + preint_states[0].jerk * sync_time;
-    interpolated_state.ang = this_state.ang + preint_states[0].alpha * sync_time;
-    interpolated_state.ori =  deltaQ(this_state.alpha * half_sync_time_sq) * (deltaQ(this_state.ang * sync_time) * this_state.ori).normalized();
+    // interpolated_state.pos = this_state.pos + this_state.vel * sync_time + (preint_states[0].ori *preint_states[0].acc) * half_sync_time_sq  +  preint_states[0].jerk * sixth_sync_time_cb;
+    // interpolated_state.vel = this_state.vel + (preint_states[0].ori.matrix() *preint_states[0].acc) *sync_time + preint_states[0].jerk * half_sync_time_sq;
+    // interpolated_state.acc = this_state.acc + preint_states[0].ori.inverse().matrix() * preint_states[0].jerk * sync_time;
+    // interpolated_state.ang = this_state.ang + preint_states[0].alpha * sync_time;
+    interpolated_state.pos = this_state.pos + this_state.vel * sync_time + (this_state.ori * this_state.acc) * half_sync_time_sq  + this_state.jerk * sixth_sync_time_cb;
+    interpolated_state.vel = this_state.vel + (this_state.ori * this_state.acc) *sync_time + this_state.jerk * half_sync_time_sq;
+    interpolated_state.acc = this_state.acc + this_state.ori.inverse() * this_state.jerk * sync_time;
+    interpolated_state.ang = this_state.ang + this_state.alpha * sync_time;
+
+
+    interpolated_state.ori =  (deltaQ(this_state.alpha * half_sync_time_sq) * (deltaQ(this_state.ang * sync_time) * this_state.ori)).normalized();
     
-    // interpolated jerk and alpha, interpolated from the sync_time to imu_dt
+    // Eigen::Quaterniond dq_vel = multQuatByScalar(deltaQ(this_state.ang), sync_time);
+    // (deltaQ(this_state.alpha * half_sync_time_sq) *
+    // interpolated_state.ori =   addQuaternions(this_state.ori * dq_vel, this_state.ori).normalized();
+    // interpolated_state.ori =   addQuaternions(this_state.ori, this_state.ori).normalized();
+    
+    // linear interpolated jerk and alpha, interpolated from the sync_time to imu_dt
     double interpolate_ratio = sync_time / imu_dt; // sync_time should be between 0 and imu_dt, if not something is wrong
     Eigen::Vector3d jerk  = this_state.jerk * (1 - interpolate_ratio)   +  next_state.jerk * interpolate_ratio; 
     Eigen::Vector3d alpha = this_state.alpha * (1 - interpolate_ratio)  +  next_state.alpha * interpolate_ratio; 
@@ -688,7 +656,7 @@ INSstate INS::calcKinematicInterpolatedState(INSstate this_state, INSstate next_
     interpolated_state.alpha = alpha;
     
     interpolated_state.time =  this_state.time + sync_time;
-    interpolated_state.dt =  imu_dt; // not sure this should be the full dt, maybe imu_dt - sync_time
+    interpolated_state.dt =  imu_dt; // not sure this should be the full dt, maybe imu_dt - sync_time?
 
     return interpolated_state;
 }
@@ -696,7 +664,6 @@ INSstate INS::calcKinematicInterpolatedState(INSstate this_state, INSstate next_
 void INS::undistortCloud(const pcl::PointCloud<PointType> &cloud_in, pcl::PointCloud<PointType> &cloud_out)
 {   
     // create state sync look-up index
-
     size_t cloud_size = cloud_in.points.size();
 
     int *state_sync_index = new int[cloud_size];
@@ -716,19 +683,20 @@ void INS::undistortCloud(const pcl::PointCloud<PointType> &cloud_in, pcl::PointC
     }
 
 
+    auto u1 = std::chrono::high_resolution_clock::now();
+    double calc_time{};
     // INSstate stateX;
     INSstate stateX;
     INSstate state_next;
+    Eigen::Matrix4d T_star = Eigen::Matrix4d::Identity();
     // double point_state_dt;
-    // #pragma omp parallel for reduction(+:calc_time) private(stateX) shared(state_sync_index, point_frame_dts) num_threads(8)
-    #pragma omp parallel for private(stateX, state_next) shared(state_sync_index, point_frame_dts) num_threads(8)
+    #pragma omp parallel for reduction(+:calc_time) private(stateX, state_next, T_star) shared(state_sync_index, point_frame_dts) num_threads(6)
+    // #pragma omp parallel for private(stateX, state_next) shared(state_sync_index, point_frame_dts) num_threads(8)
     for (size_t k = 0; k < cloud_size; k++){
         // rclcpp::Time time_calc_start = system_clock.now();
         PointType point = cloud_in.points[k];
         int i = state_sync_index[k];
         double point_frame_dt = point_frame_dts[k];
-
-  
         double sync_time = 0.0; // sync_time should be negative, time between scan start and preceding imu measurement
         if (i == 0) {
             // RCLCPP_INFO(get_logger(), "i == 0, k = %i", k);
@@ -736,14 +704,14 @@ void INS::undistortCloud(const pcl::PointCloud<PointType> &cloud_in, pcl::PointC
             state_next = preint_states[1];
         } else {
             stateX = preint_states[i];
-            state_next = preint_states[i+1]; // WHAT IF ARRAY IS ONLY 'I' BIG?! apparantly this is not a problem
+            state_next = preint_states[i+1]; // WHAT IF ARRAY IS ONLY 'i' BIG?! -> apparantly this is not a problem
             sync_time = lidar_synced_state.time - stateX.time ;
         }
         double point_state_dt = point_frame_dt + sync_time; 
 
-        if (point_state_dt < 0.0){  // error detection..
+        if (point_state_dt < 0.0){  // error detection.. only really happens if the dt is "negative zero" - beyond machine precision
             // RCLCPP_WARN(get_logger(), "Negative point dt detected state dt %f, frame dt %f, sync time %f, index %i", point_state_dt, point_frame_dt, sync_time, k);
-            cout << "Negative point dt detected state dt "<< to_string(point_state_dt) <<", frame dt  "<< to_string(point_frame_dt) <<", sync time  "<< to_string(sync_time) <<", index  "<< to_string(k) << "\n";
+            // cout << "Negative point dt detected state dt "<< to_string(point_state_dt) <<", frame dt  "<< to_string(point_frame_dt) <<", sync time  "<< to_string(sync_time) <<", index  "<< to_string(k) << "\n";
             point_state_dt = +0.0;
         }
 
@@ -761,20 +729,19 @@ void INS::undistortCloud(const pcl::PointCloud<PointType> &cloud_in, pcl::PointC
         //     RCLCPP_WARN(get_logger(), "Nan Quaternion detected!");
         //     point_rotation_distortion_rate = Eigen::Quaterniond::Identity();
         // }
-
-        INSstate point_undistort_state = calcKinematicInterpolatedState(stateX, state_next, point_state_dt);
+        auto t1 = std::chrono::high_resolution_clock::now();
+        INSstate point_undistort_state = calcKinematicInterpolatedState(stateX, state_next, point_state_dt); // returns the interpolated kinematic state at the point time
+        auto t2 = std::chrono::high_resolution_clock::now();
+        
         Eigen::Vector3d point_translation_distortion = point_undistort_state.pos;
         Eigen::Quaterniond point_rotation_distortion = point_undistort_state.ori;
 
-
-        Eigen::Matrix4d T_star = Eigen::Matrix4d::Identity();
-        // Eigen::Matrix4d T_star_normal = Eigen::Matrix4d::Identity();
         T_star.block<3,3>(0,0) = point_rotation_distortion.matrix();
-        // T_star_normal.block<3,3>(0,0) = Eigen::Matrix3d(point_rotation_distortion);
         T_star.block<3,1>(0,3) = point_translation_distortion;
 
+        // Eigen::Matrix4d T_star_normal = Eigen::Matrix4d::Identity();
+        // T_star_normal.block<3,3>(0,0) = Eigen::Matrix3d(point_rotation_distortion);
 
-        // if (!pcl::isFinite(*point))
         // if (!pcl::isFinite(point))
         // {
             // RCLCPP_INFO_ONCE(get_logger(), "point NAN! before undistortion");
@@ -823,32 +790,22 @@ void INS::undistortCloud(const pcl::PointCloud<PointType> &cloud_in, pcl::PointC
 
         // rclcpp::Time time_calc_end = system_clock.now();
         // calc_time += (time_calc_end.seconds() - time_calc_start.seconds()) * 1000.0;
-
+        
+        calc_time += getTimeDouble(t2 - t1) *1000;
     }
-
-    // double point_frame_dt = point_frame_dts[cloud_size];
-    // INSstate last_state = calcKinematicInterpolatedState(preint_states[state_sync_index[cloud_size] -1], preint_states[state_sync_index[cloud_size]], point_frame_dt);
-
-    // this synced state is also the prior for the scan registration 
-    // it is saved so it can be used in the observer
-    // preint_transformation_guess.translation = last_state.pos;
-    // preint_transformation_guess.rotation = last_state.ori;
-
-
+    auto u2 = std::chrono::high_resolution_clock::now();
+    double undistort_time = getTimeDouble(u2 - u1) *1000;
 
     // rclcpp::Time time_undistort_end = system_clock.now();
     // undistort_time = (time_undistort_end.seconds() - time_undistort_start.seconds()) * 1000.0;
 
-    // preint_states.pop_front(); // removes the interpolated state0 from imu states.
-    // preint_states.push_front(temp_state); // readd the nonsynced state
-
-    delete[] state_sync_index;
+    delete[] state_sync_index; // clear the memory usage
     delete[] point_frame_dts;
 
     // RCLCPP_INFO(get_logger(), "---- UNDISTORTION ---- ");
     // RCLCPP_INFO(get_logger(), "Undistortion of %i points, MP cpu time: %fms, avg sub-calc time: %fms", cloud_in.points.size(), undistort_time,  calc_time/(float)cloud_in.points.size() );
-    // RCLCPP_INFO(get_logger(), "Total non-mp process time: %fms", calc_time );
-
+    // RCLCPP_INFO(get_logger(), "Total non-MP process time: %fms", calc_time );
+    cout << "Undistortion of " << cloud_in.points.size()<< " points, MP cpu time: " << undistort_time  << " ms, avg sub-calc time: " <<  calc_time/(float)cloud_in.points.size() << " ms, total non-MP time: "<< calc_time <<" ms\n";
 }
 
 const INSstate& INS::getPreintState(int index)
@@ -873,6 +830,8 @@ Eigen::Quaterniond getMadgwickOrientation(double timestamp)
 class LidarOdometry : public rclcpp::Node 
 {
     private:
+        rclcpp::Clock run_clock;
+
         //callback groups
         rclcpp::CallbackGroup::SharedPtr subscriber_cb_group_;
         rclcpp::CallbackGroup::SharedPtr subscriber_cb_group2_;
@@ -892,6 +851,8 @@ class LidarOdometry : public rclcpp::Node
 
         rclcpp::Clock system_clock;
         double registration_process_time;
+
+        double system_start_time{};
 
 
         bool system_initialized = false;
@@ -1004,7 +965,7 @@ class LidarOdometry : public rclcpp::Node
         //publishers
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_pub;
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr fullpointcloud_pub;
-        rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloudguess_pub;
+        rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloudprior_pub;
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr keyframe_cloud_pub;
         // rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr globalcloud_pub;
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr localcloud_pub;
@@ -1038,6 +999,7 @@ class LidarOdometry : public rclcpp::Node
         // Eigen::Vector3d preint_velocity;
 
         INS ins; // the new ins class that will handle INS and preintegration
+        // rclcpp::Node ins; // the new ins class that will handle INS and preintegration
 
         INSstate state0;
 
@@ -1268,7 +1230,7 @@ class LidarOdometry : public rclcpp::Node
 
             pointcloud_pub = this->create_publisher<PC_msg>("/ds_point_cloud_odom", 10);
             fullpointcloud_pub = this->create_publisher<PC_msg>("/full_point_cloud_odom", 10);
-            pointcloudguess_pub = this->create_publisher<PC_msg>("/full_point_cloud_transform_guess", 10);
+            pointcloudprior_pub = this->create_publisher<PC_msg>("/full_point_cloud_transform_guess", 10);
             keyframe_cloud_pub = this->create_publisher<PC_msg>("/full_point_cloud_keyframe", 2);
 
             // globalcloud_pub = this->create_publisher<PC_msg>("/global_point_cloud", 100);
@@ -1364,6 +1326,8 @@ class LidarOdometry : public rclcpp::Node
 
             data_file.open (save_path_ + datestr + "_run_data.csv");
 
+            // write the header to the save file
+
             data_file << "ds_voxel_size: " + std::to_string(ds_voxel_size_)+"\n";
             data_file << "ds_voxel_size_lc: "+ std::to_string(ds_voxel_size_lc_)+"\n";
             data_file << "use_cloud_scale_for_ds: "+ std::to_string(use_cloud_scale_for_ds_)+"\n";
@@ -1456,9 +1420,6 @@ class LidarOdometry : public rclcpp::Node
             rclcpp::Time time_save_end = system_clock.now();
 
             RCLCPP_DEBUG(get_logger(), "Odometry data saved: %fms", time_save_end.seconds()*1000.0 - time_save_start.seconds()*1000.0);
-
-
-
         }
     
 
@@ -1481,7 +1442,6 @@ class LidarOdometry : public rclcpp::Node
             // first_lidar_received = true;
             // cloud_queue.push_back(*lidar_cloud_msg);
             fromROSMsg(*lidar_cloud_msg, *long_term_map);
-
         }
 
         // not used atm
@@ -1531,9 +1491,7 @@ class LidarOdometry : public rclcpp::Node
         //         initial_pose = ins_pose_new;
         //         initial_pose_recieved = true;
         //         RCLCPP_INFO_ONCE(get_logger(), "INS Initial attitude recieved q: %f %f %f %f", initial_pose.orientation.w(), initial_pose.orientation.x(), initial_pose.orientation.y(), initial_pose.orientation.z());
-
         //     }
-
         // }
 
         void imuDataHandler(const sensor_msgs::msg::Imu::SharedPtr imu_msg)
@@ -1613,7 +1571,7 @@ class LidarOdometry : public rclcpp::Node
             // RCLCPP_INFO(get_logger(), "Header: %s,  time of PCL: %f, num points: %i", cloud_header.frame_id, time_new_cloud.nanoseconds()/1e9, cloud_in->points.size());
         }
 
-        void publishGuessCloud(Eigen::Matrix4f transformation)
+        void publishPriorCloud(Eigen::Matrix4f transformation)
         {   
             sensor_msgs::msg::PointCloud2 msgs;
             pcl::PointCloud<PointType> transformed_cloud;
@@ -1624,10 +1582,9 @@ class LidarOdometry : public rclcpp::Node
             msgs.header.stamp = cloud_header.stamp;
             msgs.header.frame_id = frame_id;
 
-            pointcloudguess_pub->publish(msgs);
+            pointcloudprior_pub->publish(msgs);
         }
         
-
         void publishKeyframeCloud()
         {   
             sensor_msgs::msg::PointCloud2 msgs;
@@ -1780,8 +1737,10 @@ class LidarOdometry : public rclcpp::Node
             registration_transformation.matrix = Eigen::Matrix4d::Identity();
             registration_transformation.rotation = Eigen::Quaterniond::Identity();
             registration_transformation.translation = Eigen::Vector3d::Zero();
+
             last_odometry_transformation.rotation = Eigen::Quaterniond::Identity();
             last_odometry_transformation.translation = Eigen::Vector3d::Zero();
+
             keyframe_to_odometry_transformation.rotation = Eigen::Quaterniond::Identity();
             keyframe_to_odometry_transformation.translation = Eigen::Vector3d::Zero();
             
@@ -1828,6 +1787,7 @@ class LidarOdometry : public rclcpp::Node
             }
 
             system_initialized = false;
+            system_start_time = run_clock.now().seconds();
 
         }
 
@@ -1840,7 +1800,8 @@ class LidarOdometry : public rclcpp::Node
             if (initial_pose_recieved){
                 RCLCPP_INFO(get_logger(), "Using Initial Attitude quaternion from Madgwick:  q_init: %f, %f, %f, %f",initial_pose.orientation.w(), initial_pose.orientation.x(), initial_pose.orientation.y(), initial_pose.orientation.z() );
                 last_odometry_pose.orientation =            Eigen::Quaterniond(initial_pose.orientation);
-                last_odometry_pose.matrix.block<3,3>(0,0) = last_odometry_pose.orientation.matrix();
+                last_odometry_pose.matrix = Eigen::Matrix4d::Identity();
+                last_odometry_pose.matrix.block<3,3>(0,0) = Eigen::Matrix3d(last_odometry_pose.orientation);
                 observer_state.ori  =                       Eigen::Quaterniond(initial_pose.orientation);
                 preint_state.ori    =                       Eigen::Quaterniond(initial_pose.orientation);
                 preint_anchor.ori   =                       Eigen::Quaterniond(initial_pose.orientation);
@@ -1933,7 +1894,7 @@ class LidarOdometry : public rclcpp::Node
             new_keyframe_pose.matrix.block<3, 3>(0, 0) = new_keyframe_pose.orientation.matrix();
             new_keyframe_pose.matrix.block<3, 1>(0, 3) = new_keyframe_pose.position;
 
-            RCLCPP_INFO(get_logger(), "Keyframe Attitude quaternion:  q_init: %f, %f, %f, %f", new_keyframe_pose.orientation.w(), new_keyframe_pose.orientation.x(), new_keyframe_pose.orientation.y(), new_keyframe_pose.orientation.z() );
+            // RCLCPP_INFO(get_logger(), "Keyframe Attitude quaternion:  q_init: %f, %f, %f, %f", new_keyframe_pose.orientation.w(), new_keyframe_pose.orientation.x(), new_keyframe_pose.orientation.y(), new_keyframe_pose.orientation.z() );
             
             keyframe_pose = new_keyframe_pose;
             // keyframe_poses.push_back(last_odometry_pose); 
@@ -1969,8 +1930,9 @@ class LidarOdometry : public rclcpp::Node
             // registration_transformation = Eigen::Matrix4d::Identity(); // this has to be "reset" as it it is used to determine the next guess
             
             
-            registration_transformation.rotation = Eigen::Quaterniond::Identity(); // this has to be "reset" as it it is used to determine the next guess
-            registration_transformation.translation = Eigen::Vector3d::Zero(); // this has to be "reset" as it it is used to determine the next guess
+            registration_transformation.rotation.setIdentity(); // this has to be "reset" as it it is used to determine the next guess
+            registration_transformation.translation.setZero(); // this has to be "reset" as it it is used to determine the next guess
+            registration_transformation.matrix.setIdentity(); // this has to be "reset" as it it is used to determine the next guess
 
 
             // RCLCPP_INFO(get_logger(), "New keyframe added! index: %i", latest_keyframe_idx);
@@ -2871,8 +2833,8 @@ class LidarOdometry : public rclcpp::Node
             // else just identity guess..
             // RCLCPP_INFO(get_logger(), "Problem in here?");
 
-            // publishGuessCloud(K*init_guess);
-            publishGuessCloud(init_guess);
+            // publishPriorCloud(keyframe_pose.matrix.inverse().cast<float>());
+            publishPriorCloud(init_guess);
         }
 
 
@@ -3081,8 +3043,7 @@ class LidarOdometry : public rclcpp::Node
         Eigen::Matrix4d cloudRegisration(boost::shared_ptr<pcl::PointCloud<PointType>> source)
         {
             // rclcpp::Clock system_clock;
-            // pcl::PointCloud<PointType>::Ptr aligned_cloud(new pcl::PointCloud<PointType>());
-            pcl::PointCloud<PointType>::Ptr aligned_cloud = boost::make_shared<pcl::PointCloud<PointType>>();
+            
 
             registration_->setInputSource(source);
             // rclcpp::Time time_covcalc_start = system_clock.now();
@@ -3090,6 +3051,7 @@ class LidarOdometry : public rclcpp::Node
             // rclcpp::Time time_covcalc_end = system_clock.now();
             // RCLCPP_INFO(get_logger(), "Covariance calculation time: %fms", time_covcalc_end.seconds()*1000.0 - time_covcalc_start.seconds()*1000.0);
             
+            pcl::PointCloud<PointType>::Ptr aligned_cloud = boost::make_shared<pcl::PointCloud<PointType>>();
             rclcpp::Time time_align_start = system_clock.now();
             // RCLCPP_INFO(get_logger(), "Problemin align?");
             registration_->align(*aligned_cloud, init_guess);
@@ -3097,6 +3059,8 @@ class LidarOdometry : public rclcpp::Node
             rclcpp::Time time_align_end = system_clock.now();
 
             Eigen::Matrix4d registration_transform_double = registration_->getFinalTransformation().cast<double>();
+
+            
 
             icp_fitness = registration_->getFitnessScore();
 
@@ -3113,6 +3077,8 @@ class LidarOdometry : public rclcpp::Node
             
             pcl::PointCloud<PointType>::Ptr source = boost::make_shared<pcl::PointCloud<PointType>>(*src);
             // pcl::PointCloud<PointType>::Ptr target = boost::make_shared<pcl::PointCloud<PointType>>(*tgt);
+            // pcl::copyPointCloud(*src, *source);
+
             // Eigen::Vector4d centroid;
             // pcl::compute3DCentroid(*source, centroid);
             // Eigen::Vector3d centroid3(-centroid[0], -centroid[1], -centroid[2]);
@@ -3127,11 +3093,19 @@ class LidarOdometry : public rclcpp::Node
             // pcl::transformPointCloudWithNormals(*source, *source, demean_T);
             // pcl::transformPointCloudWithNormals(*target, *target, demean_T);
             // the output transformation is the only thing that matters
+            
+            Eigen::Matrix4d T;
+            T = keyframe_pose.matrix.inverse();
+            // pcl::transformPointCloudWithNormals<PointType>(*source, *source, T);
 
-        
             // RCLCPP_INFO(get_logger(), "Starting scan matching..");
             Eigen::Matrix4d registration_transform_matrix;
+            Eigen::Matrix4d R;
+            R = T.inverse();
+            R.block<3,1>(0,3).setZero();
             registration_transform_matrix = cloudRegisration(source);
+            // registration_transform_matrix = R * registration_transform_matrix;
+            // cout << registration_transform_matrix << "\n";
 
             // registration_transformation.rotation = Eigen::Quaterniond(registration_transform_matrix.block<3,3>(0,0)).normalized();
             registration_transformation.matrix = registration_transform_matrix;
@@ -3140,6 +3114,17 @@ class LidarOdometry : public rclcpp::Node
             registration_transformation.translation = Eigen::Vector3d(registration_transform_matrix.block<3,1>(0,3));
 
             saveFitness();
+        }
+
+        void setRegistrationTarget(boost::shared_ptr<pcl::PointCloud<PointType>> tgt)
+        {
+            pcl::PointCloud<PointType>::Ptr target = boost::make_shared<pcl::PointCloud<PointType>>(*tgt);
+            // pcl::copyPointCloud(*tgt, *target);
+            Eigen::Matrix4d T;
+            T = keyframe_pose.matrix.inverse();
+            // cout <<last_odometry_pose.matrix <<"\n" << T << "\n";
+            // pcl::transformPointCloudWithNormals<PointType>(*target, *target, T);
+            registration_->setInputTarget(target);
         }
 
         void saveFitness(){
@@ -3217,27 +3202,28 @@ class LidarOdometry : public rclcpp::Node
 
             // the scan match residual are in local frame
             // Eigen::Quaterniond q_error = preint_residual.rotation;
-            // Eigen::Vector3d p_e_vec = preint_residual.translation;
+            // Eigen::Vector3d p_error = preint_residual.translation;
 
             // calculated in world frame - here last odometry is the current one just establsihed by ICP
             Eigen::Quaterniond q_error = preint_transformation_guess.rotation.inverse() * last_odometry_pose.orientation; 
-            Eigen::Vector3d p_e_vec = (last_odometry_pose.position - preint_transformation_guess.translation); 
+            Eigen::Vector3d p_error = (last_odometry_pose.position - preint_transformation_guess.translation); 
 
+            preint_residual.rotation = q_error;
+            preint_residual.translation = last_odometry_pose.orientation.matrix() * p_error; // saved in the body frame
 
-            RCLCPP_INFO(get_logger(), "Observer: Translation residual: %f %f %f", p_e_vec.x(), p_e_vec.y(), p_e_vec.z());
+            RCLCPP_INFO(get_logger(), "Observer: Translation residual: %f %f %f norm: %f", p_error.x(), p_error.y(), p_error.z(), p_error.norm());
             RCLCPP_INFO(get_logger(), "Observer: Rotational residual: %f %f %f %f", q_error.w(), q_error.x(), q_error.y(), q_error.z());
 
-            Eigen::Vector3d q_e_vec = q_error.vec();
+            Eigen::Vector3d q_e_vec = q_error.vec(); // the imaginary part of the quaternion is made to a vector
             // RCLCPP_INFO(get_logger(), "q_error calc: %f %f %f %f", q_error_calc.w(), q_error_calc.x(), q_error_calc.y(), q_error_calc.z());
             // Eigen::Quaterniond q_error = observer_state.ori.inverse() * last_odometry_pose.orientation;
-            // Eigen::Vector3d p_e_vec = last_odometry_pose.position - observer_state.pos;
+            // Eigen::Vector3d p_error = last_odometry_pose.position - observer_state.pos;
 
             double qw = q_error.w();
             double abs_qw = abs(qw);
             int sgn_qw = 1;
-            if (abs_qw != 0.0) // to avoid division with zero.. if abs_qw = 0.0 sign is set positive 
+            if (abs_qw != 0.0) // to avoid division with zero, if abs_qw = 0.0 sign is set positive 
                 sgn_qw = qw/ abs_qw;
-
 
             Eigen::Quaterniond q_e(1.0 - abs_qw, sgn_qw * q_error.x(), sgn_qw * q_error.y(), sgn_qw * q_error.z());
             // RCLCPP_INFO(get_logger(), "q_e: %f %f %f %f", q_e.w(), q_e.x(), q_e.y(), q_e.z());
@@ -3251,12 +3237,12 @@ class LidarOdometry : public rclcpp::Node
             observer_state.bias.ang     -=  gamma_2 * qw * q_e_vec;  
             // Eigen::Vector3d velocity_deweight(observer_state.vel);
             // velocity_deweight = (velocity_deweight.cwiseAbs()) / (velocity_deweight.cwiseAbs().maxCoeff() + 1e-5);
-            // observer_state.pos          +=  gamma_3 * (p_e_vec).cwiseProduct(observer_state.ori.matrix() * dynamic_model_deweight);
-            observer_state.pos          +=  gamma_3 * p_e_vec;
-            observer_state.vel          +=  gamma_4 * (p_e_vec).cwiseProduct(dynamic_model_deweight); // here it is corrected in world frame
-            // observer_state.vel          +=  gamma_4 * (observer_state.ori.matrix().inverse() * p_e_vec).cwiseProduct(dynamic_model_deweight); // here it is corrected in the local frame
-            observer_state.bias.acc     -=  gamma_5 * observer_state.ori.matrix().inverse() * p_e_vec;  // the error is rotated into local frame to update bias
-            // observer_state.bias.acc     -=  gamma_5 *  p_e_vec;  
+            // observer_state.pos          +=  gamma_3 * (p_error).cwiseProduct(observer_state.ori.matrix() * dynamic_model_deweight);
+            observer_state.pos          +=  gamma_3 * p_error;
+            observer_state.vel          +=  gamma_4 * (p_error).cwiseProduct(dynamic_model_deweight); // here it is corrected in world frame
+            // observer_state.vel          +=  gamma_4 * (observer_state.ori.matrix().inverse() * p_error).cwiseProduct(dynamic_model_deweight); // here it is corrected in the local frame
+            observer_state.bias.acc     -=  gamma_5 * observer_state.ori.matrix().inverse() * p_error;  // the error is rotated into local frame to update bias
+            // observer_state.bias.acc     -=  gamma_5 *  p_error;  
 
             if (abs(observer_state.bias.ang[1])  > 1.0) { // attempt at debugging, this should not happen
                 RCLCPP_INFO(get_logger(), "What is wrong?");
@@ -3292,32 +3278,35 @@ class LidarOdometry : public rclcpp::Node
             // update_T.block<3,1>(0,3) = update_transformation.translation;
             // update_T.block<3,3>(0,0) = Eigen::Matrix3d(update_transformation.rotation);
             update_T = update_transformation.matrix;
-            // DeltaT = registration_transformation.matrix;
             DeltaT = update_transformation.matrix;
             // RCLCPP_INFO(get_logger(), "prior pose: pos %f %f %f ", preint_transformation_guess.translation.x(), preint_transformation_guess.translation.y(), preint_transformation_guess.translation.z());
             if (use_preint_undistortion_){
 
-                Eigen::Matrix4d  T_M;
+                RCLCPP_INFO(get_logger(), "prior INS pose: pos %f %f %f ", preint_transformation_guess.translation.x(), preint_transformation_guess.translation.y(), preint_transformation_guess.translation.z());
+                RCLCPP_INFO(get_logger(), "prior INS pose: ori %f %f %f %f", preint_transformation_guess.rotation.w(), preint_transformation_guess.rotation.x(), preint_transformation_guess.rotation.y(), preint_transformation_guess.rotation.z());
+                
+                Eigen::Matrix4d T_M;
                 T_M = Eigen::Matrix4d::Identity();
                 T_M.block<3,3>(0,0) = Eigen::Matrix3d(preint_transformation_guess.rotation);
                 T_M.block<3,1>(0,3) = preint_transformation_guess.translation;
                 // cloud_zeroing_transform = Eigen::Matrix4d::Identity();
                 
                 // this value is only used to save to file
-                preint_residual.translation = update_transformation.translation;
-                preint_residual.rotation = update_transformation.rotation; 
-                RCLCPP_INFO(get_logger(), "Translation residual: %f %f %f", preint_residual.translation.x(), preint_residual.translation.y(), preint_residual.translation.z());
-                RCLCPP_INFO(get_logger(), "Rotational residual q_err :%f %f %f %f",preint_residual.rotation.w(),  preint_residual.rotation.x(), preint_residual.rotation.y(), preint_residual.rotation.z());
 
-                RCLCPP_INFO(get_logger(), "prior INS pose: pos %f %f %f ", preint_transformation_guess.translation.x(), preint_transformation_guess.translation.y(), preint_transformation_guess.translation.z());
-                RCLCPP_INFO(get_logger(), "prior INS pose: ori %f %f %f %f", preint_transformation_guess.rotation.w(), preint_transformation_guess.rotation.x(), preint_transformation_guess.rotation.y(), preint_transformation_guess.rotation.z());
-
-                update_T = DeltaT * T_M;
-                // update_T =  T_M * DeltaT;
+                update_T = DeltaT * T_M; // DeltaT is the refining ICP transformation, T_M is the preintegrated guess
+                // update_T = T_M * DeltaT ; // DeltaT is the refining ICP transformation, T_M is the preintegrated guess
                 update_transformation.translation = update_T.block<3,1>(0,3);
                 update_transformation.rotation = Eigen::Quaterniond(update_T.block<3,3>(0,0));
 
-                registration_transformation = update_transformation; 
+                // registration_transformation = update_transformation; 
+
+                // preint_residual.matrix = DeltaT;
+                // preint_residual.translation = preint_residual.matrix.block<3,1>(0,3);
+                // preint_residual.rotation = Eigen::Quaterniond(preint_residual.matrix.block<3,3>(0,0)); 
+
+                // RCLCPP_INFO(get_logger(), "Translation residual: %f %f %f norm: %f", preint_residual.translation.x(), preint_residual.translation.y(), preint_residual.translation.z(), preint_residual.translation.norm());
+                // RCLCPP_INFO(get_logger(), "Rotational residual:%f %f %f %f",preint_residual.rotation.w(),  preint_residual.rotation.x(), preint_residual.rotation.y(), preint_residual.rotation.z());
+
 
                 next_P = update_T;
             } else {
@@ -3669,8 +3658,6 @@ class LidarOdometry : public rclcpp::Node
         // function adapted from lili-om
         void buildLocalMapAroundKeyFrame() 
         {
-    
-
             pcl::PointCloud<PointType>::Ptr transformed_cloud = boost::make_shared<pcl::PointCloud<PointType>>();
             // pcl::PointCloud<PointType>::Ptr transformed_cloud_ds = boost::make_shared<pcl::PointCloud<PointType>>();
             // pcl::transformPointCloudWithNormals<PointType>(*all_clouds[keyframe_poses.size()-1], *transformed_cloud,  keyframe_pose.position, keyframe_pose.orientation);
@@ -3775,6 +3762,7 @@ class LidarOdometry : public rclcpp::Node
 
         void publishLocalMap()
         {
+            
             // Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
             // T.block<3,3>(0,0) = Eigen::Matrix3d(keyframe_pose.orientation);
             // T.block<3,1>(0,3) = (keyframe_pose.position);
@@ -3782,13 +3770,34 @@ class LidarOdometry : public rclcpp::Node
             // pcl::PointCloud<PointType>::Ptr cropped_local_map = boost::make_shared<pcl::PointCloud<PointType>>();
             // pcl::copyPointCloud(*local_map_ds, *cropped_local_map);
             // pcl::transformPointCloudWithNormals<PointType>(*cropped_local_map, *cropped_local_map, T);
-
+            
             sensor_msgs::msg::PointCloud2 msgs;
             #ifndef __INTELLISENSE__ 
-            // pcl::toROSMsg(*cropped_local_map, msgs);
-            // pcl::toROSMsg(*local_map_ds, msgs);
             pcl::toROSMsg(*target_map, msgs);
             #endif
+            // msgs.header.stamp = ros::Time().fromSec(time_new_cloud);
+            msgs.header.stamp = time_new_cloud; 
+            // msgs.header.frame_id = frame_id;
+            msgs.header.frame_id = "lidar_odom";
+            localcloud_pub->publish(msgs);
+            // RCLCPP_INFO(get_logger(), "Local map published!");
+            // global_cloud->clear();
+        }
+
+        void publishLocalMap(Eigen::Matrix4d transformation)
+        {
+            // Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
+            // T.block<3,3>(0,0) = Eigen::Matrix3d(keyframe_pose.orientation);
+            // T.block<3,1>(0,3) = (keyframe_pose.position);
+
+            pcl::PointCloud<PointType>::Ptr transformed_local_map = boost::make_shared<pcl::PointCloud<PointType>>();
+            // pcl::copyPointCloud(*local_map_ds, *cropped_local_map);
+            pcl::transformPointCloudWithNormals<PointType>(*target_map, *transformed_local_map, transformation);
+
+            sensor_msgs::msg::PointCloud2 msgs;
+            // #ifndef __INTELLISENSE__ 
+            pcl::toROSMsg(*transformed_local_map, msgs);
+            // #endif
             // msgs.header.stamp = ros::Time().fromSec(time_new_cloud);
             msgs.header.stamp = time_new_cloud; 
             // msgs.header.frame_id = frame_id;
@@ -4197,9 +4206,13 @@ class LidarOdometry : public rclcpp::Node
             if (!getNextInBuffer()){
                 return;
             }
+
+
             rclcpp::Clock frame_clock;
             rclcpp::Clock missing_time_clock;
             rclcpp::Time time_frame_start = frame_clock.now();
+
+            double undistort_time{};
 
             latest_frame_idx++;
             // RCLCPP_INFO(get_logger(), "Frame idx: %i", latest_frame_idx);
@@ -4249,8 +4262,8 @@ class LidarOdometry : public rclcpp::Node
                         calib_transformation.matrix.block<3,3>(0,0) = calib_transformation.rotation.normalized().matrix();
                         calib_transformation.matrix.block<3,1>(0,3) = calib_transformation.translation;
                         
-                        updateOdometryPose(calib_transformation);  // registration is just an identity transform here, so no actual transform but it calculates a residual
-                        
+                        // updateOdometryPose(calib_transformation);  // registration is just an identity transform here, so no actual transform but it calculates a residual
+                        last_odometry_pose.time = current_scan_time;
 
                         preint_anchor = ins.getPreintAnchor();
                         simpleConstraningObserverUpdate(preint_transformation_guess, preint_anchor);
@@ -4272,6 +4285,7 @@ class LidarOdometry : public rclcpp::Node
                     addToLocalMap();
                     
                     saveRunningData();
+                    *target_map = *local_map_ds;
                     publishLocalMap();
                     return;
                 }
@@ -4279,13 +4293,9 @@ class LidarOdometry : public rclcpp::Node
                 RCLCPP_INFO(get_logger(), "Initial local map built!");
                 // buildLocalMapAroundKeyFrame();
                 publishLocalMap();
-                registration_->setInputTarget(local_map_ds);
+                // registration_->setInputTarget(local_map_ds);
+                setRegistrationTarget(local_map_ds);
                 init_map_built = true;
-                    // return;
-                // }
-                // for (int i = 0; i < local_map_init_frames_count_; i++ ){
-                // }
-
             }
 
             rclcpp::Time time_missing_start = frame_clock.now();
@@ -4300,7 +4310,10 @@ class LidarOdometry : public rclcpp::Node
                 publishPredictedINSstates();
                 
                 preint_transformation_guess = ins.getPreintegratedTransformationGuess();
+                rclcpp::Time undistort_start_time = frame_clock.now();
                 ins.undistortCloud(*cloud_in, *cloud_in); // this also transforms the cloud into the guess of the transformation ie. the imu preintegrated pose
+                rclcpp::Time undistort_end_time = frame_clock.now();
+                undistort_time = undistort_end_time.seconds()*1000.0 - undistort_start_time.seconds()*1000.0; 
                 // preint_transformation_guess = ins.getPreintegratedTransformationGuess(); // testing this
             
             } else {
@@ -4347,21 +4360,23 @@ class LidarOdometry : public rclcpp::Node
                 // pushLastTransformationToConstVelocityModel(); // is not needed?
                 // savePointCloud();
 
-                trimLocalMap();  // of the local map is too "wide"
 
                 if (local_map_width_ > 0) {
+                    trimLocalMap();  // if the local map is too "wide"
                     buildLocalMapAroundKeyFrame();
                     // fuseLocalLongTermMap();
 
                     *target_map = *local_map_ds;
-                } else {
+                } else { // if width is set zero it means infinite length
                     addToLocalMap();
                     *target_map = *local_map_ds;
                 }
 
                 
-                registration_->setInputTarget(target_map);
+                // registration_->setInputTarget(target_map);
+                setRegistrationTarget(target_map);
                 publishLocalMap();
+                // publishLocalMap(keyframe_pose.matrix.inverse());
                     
             }
             // } else { // keyframe rejection ei. 
@@ -4373,8 +4388,12 @@ class LidarOdometry : public rclcpp::Node
             double frame_process_time = time_frame_end.seconds()*1000.0 - time_frame_start.seconds()*1000.0; 
             double mystery_time = time_missing_end.seconds()*1000.0 - time_missing_start.seconds()*1000.0; 
 
-            RCLCPP_INFO(get_logger(), " -- Frame process time ---  %fms --- difference --- %fms", frame_process_time, frame_process_time - registration_process_time );
-            RCLCPP_INFO(get_logger(), " -- mystery time ---  %fms" , mystery_time );
+            double total_run_time = run_clock.now().seconds() - system_start_time;
+
+            RCLCPP_INFO(get_logger(), " -- Frame process time: This: %f ms Average: %f ms ---  Reg. difference: %f ms", frame_process_time, total_run_time/(double)latest_frame_idx *1000.0 ,  frame_process_time - registration_process_time );
+            // RCLCPP_INFO(get_logger(), " -- Frame process time ---  %f ms --- difference --- %f ms", frame_process_time, frame_process_time - registration_process_time );
+            RCLCPP_INFO(get_logger(), " -- mystery time:  %f ms --- Undistortion time: %f ms" , mystery_time, undistort_time);
+            RCLCPP_INFO(get_logger(), " -- Processed time: %f s -- Total run Time: %f s" , current_scan_time - first_lidar_msg_time ,total_run_time);
 
 
         }

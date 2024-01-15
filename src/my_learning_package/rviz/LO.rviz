@@ -5,8 +5,8 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Global Options1
+        - /Global Map1
         - /Global Map1/Autocompute Value Bounds1
-        - /Local Map1
         - /Local Map1/Autocompute Value Bounds1
         - /LO Odometry1/Shape1
         - /LO Odometry1/Covariance1/Position1
@@ -326,12 +326,12 @@ Visualization Manager:
       Color: 255; 255; 255
       Color Transformer: Intensity
       Decay Time: 0
-      Enabled: false
+      Enabled: true
       Invert Rainbow: true
       Max Color: 255; 255; 255
-      Max Intensity: 175.09947204589844
+      Max Intensity: 175.10052490234375
       Min Color: 0; 0; 0
-      Min Intensity: 4.66439378215e-05
+      Min Intensity: 2.5111655759246787e-06
       Name: Global Map
       Position Transformer: XYZ
       Selectable: true
@@ -346,7 +346,7 @@ Visualization Manager:
         Value: /global_point_cloud
       Use Fixed Frame: true
       Use rainbow: true
-      Value: false
+      Value: true
     - Alpha: 1
       Autocompute Intensity Bounds: false
       Autocompute Value Bounds:
@@ -381,7 +381,7 @@ Visualization Manager:
       Use rainbow: true
       Value: false
     - Alpha: 0.800000011920929
-      Autocompute Intensity Bounds: true
+      Autocompute Intensity Bounds: false
       Autocompute Value Bounds:
         Max Value: -4.314080238342285
         Min Value: -29.04503059387207
@@ -392,12 +392,12 @@ Visualization Manager:
       Color: 115; 210; 22
       Color Transformer: Intensity
       Decay Time: 0
-      Enabled: true
+      Enabled: false
       Invert Rainbow: true
       Max Color: 25; 255; 0
-      Max Intensity: 6.590992450714111
+      Max Intensity: 10
       Min Color: 29; 0; 255
-      Min Intensity: -2.5737338066101074
+      Min Intensity: -1
       Name: Local Map
       Position Transformer: XYZ
       Selectable: true
@@ -412,7 +412,7 @@ Visualization Manager:
         Value: /local_point_cloud
       Use Fixed Frame: true
       Use rainbow: false
-      Value: true
+      Value: false
     - Angle Tolerance: 0.009999999776482582
       Class: rviz_default_plugins/Odometry
       Covariance:
@@ -653,7 +653,7 @@ Visualization Manager:
           Value: true
         Value: true
       Enabled: true
-      Keep: 5
+      Keep: 25
       Name: Keyframes
       Position Tolerance: 0
       Shape:
@@ -753,25 +753,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 105.60832977294922
+      Distance: 100.41509246826172
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -37.92414474487305
-        Y: -16.973676681518555
-        Z: -6.1695404052734375
+        X: -36.077064514160156
+        Y: -29.069643020629883
+        Z: -5.358004093170166
       Focal Shape Fixed Size: true
       Focal Shape Size: 1
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.645201563835144
+      Pitch: 0.7902048230171204
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 1.6891660690307617
+      Yaw: 6.15001916885376
     Saved: ~
 Window Geometry:
   Displays:
@@ -787,5 +787,5 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 1862
-  X: 58
-  Y: 27
+  X: 1698
+  Y: 162

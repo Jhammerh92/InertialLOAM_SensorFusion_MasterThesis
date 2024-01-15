@@ -1,8 +1,8 @@
 lidar_odometry:
   ros__parameters:
     # voxel downsampling parameters
-    ds_voxel_size: 0.5 # <0.05 current cloud downsample size
-    ds_voxel_size_lc: 0.5 # 0.01 - local map down sample size
+    ds_voxel_size: 1.0 # <0.05 current cloud downsample size
+    ds_voxel_size_lc: 1.0 # 0.01 - local map down sample size
     ds_voxel_size_kf: 0.5 # 0.01 - keyframe map down sample size
     
     # active cloud scaling voxel downsampling
@@ -13,7 +13,7 @@ lidar_odometry:
     
     # Keyframe thresholds
     keyframe_threshold_length: 5.0 # meters, 2.0 is good, 0.02 for dense maps!
-    keyframe_threshold_angle: 45.0 # deg, 30 is good
+    keyframe_threshold_angle: 90.0 # deg, 30 is good
     keyframe_threshold_fitness: 0.0
     keyframe_threshold_index: 0 # 0 means it is not used, 1 means keyframe all frames
     
@@ -21,10 +21,10 @@ lidar_odometry:
     scan_matching_method: 0 # 0 ICP-p2pl, 1 GICP OMP, 2 GICP, 3 NDT-p2d OMP
     icp_max_iterations: 1000 # 10-30
     icp_max_coarse_iterations: 0 # < 5
-    icp_max_correspondence_distance: 1.0 # should be less than voxelsize of source OBS this works as NDT resultion when using NDT
+    icp_max_correspondence_distance: 2.0 # should be less than voxelsize of source OBS this works as NDT resultion when using NDT
     coarse_correspondence_factor: 10
     local_map_width: 5 # if 0 all previous keyframes are pushed to local map indefinitely
-    local_map_init_frames_count: 25
+    local_map_init_frames_count: 1
 
     # imu fusion parameters
     imu_topic: "/imu/data_madgwick"
@@ -33,7 +33,7 @@ lidar_odometry:
     use_lidar_odometry_guess: false
     use_preint_undistortion: true # PREINTEGRATION
 
-    start_delay_s: 0.2 # this discards all data until this time is reached from the first lidar msg
+    start_delay_s: 3.0 # this discards all data until this time is reached from the first lidar msg
     sync_offset_ms: 0.0 # this ms value is added to the lidar frame time stamp in millisec
 
 
@@ -46,7 +46,7 @@ lidar_odometry:
     #                 description             suggested value
     gamma_1: 2.0    # orientation gain       # 2.0 
     gamma_2: 1.5    # angular vel bias gain  # 1.5
-    gamma_3: 1.0    # positional gain        # 1.0
+    gamma_3: 2.0    # positional gain        # 1.0
     gamma_4: 20.0   # velocity gain          # 20.0
     gamma_5: 0.1    # acc bias gain          # 0.5
 

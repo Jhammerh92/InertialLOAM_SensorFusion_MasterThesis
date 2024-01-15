@@ -178,16 +178,18 @@ builtin_interfaces::msg::Time inline toHeaderStamp(double time)
 Eigen::Quaterniond inline addQuaternions(const Eigen::Quaterniond q1, const Eigen::Quaterniond q2)
 {
     Eigen::Quaterniond q_sum;
-    q_sum.w() = q1.w() + q2.w();
-    q_sum.vec() = q1.vec() + q2.vec();
+    // q_sum.w() = q1.w() + q2.w();
+    // q_sum.vec() = q1.vec() + q2.vec();
+    q_sum.coeffs() = q1.coeffs() + q2.coeffs();
     return q_sum;
 }
 
 Eigen::Quaterniond inline multQuatByScalar(const Eigen::Quaterniond q, const double scalar)
 {
     Eigen::Quaterniond q_prod;
-    q_prod.w() = q.w()*scalar;
-    q_prod.vec() = q.vec()*scalar;
+    // q_prod.w() = q.w()*scalar;
+    // q_prod.vec() = q.vec()*scalar;
+    q_prod.coeffs() = q.coeffs()*scalar;
     return q_prod;
 }
 
@@ -196,14 +198,14 @@ template <typename Derived>
 Eigen::Quaternion<typename Derived::Scalar> inline deltaQ(const Eigen::MatrixBase<Derived> &theta)
 {
     typedef typename Derived::Scalar Scalar_t;
-
     Eigen::Quaternion<Scalar_t> dq;
     Eigen::Matrix<Scalar_t, 3, 1> half_theta = theta;
     half_theta /= static_cast<Scalar_t>(2.0);
     dq.w() = static_cast<Scalar_t>(1.0);
-    dq.x() = half_theta.x();
-    dq.y() = half_theta.y();
-    dq.z() = half_theta.z();
+    // dq.x() = half_theta.x();
+    // dq.y() = half_theta.y();
+    // dq.z() = half_theta.z();
+    dq.vec() = half_theta;
     return dq;
 }
 
@@ -404,7 +406,11 @@ Eigen::Matrix4d inline SE3fromTransformation(const Eigen::Quaterniond q, const E
 
 
 
-
+template <class Rep, class Period>
+constexpr auto inline getTimeDouble(const std::chrono::duration<Rep,Period>& d)
+{
+    return std::chrono::duration<double>(d).count();
+}
 
 
 
